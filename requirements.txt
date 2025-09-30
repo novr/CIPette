@@ -1,0 +1,8 @@
+# Core dependencies
+flask>=3.0.0
+PyGithub>=2.1.1
+python-dotenv>=1.0.0
+
+# Development dependencies
+pytest>=8.0.0
+ruff>=0.1.0
