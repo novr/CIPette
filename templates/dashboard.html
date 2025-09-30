@@ -29,13 +29,6 @@
     </form>
 </div>
 
-{% if mttr %}
-<div class="mttr-summary">
-    <h3>Mean Time To Recovery (MTTR)</h3>
-    <p class="mttr-value">{{ mttr|mttr }}</p>
-</div>
-{% endif %}
-
 <div class="metrics-table">
     {% if metrics %}
     <table>
@@ -46,6 +39,7 @@
                 <th>Total Runs</th>
                 <th>Success Rate</th>
                 <th>Avg Duration</th>
+                <th>MTTR</th>
                 <th class="success">Success</th>
                 <th class="failure">Failure</th>
                 <th>Period</th>
@@ -65,6 +59,13 @@
                     {% endif %}
                 </td>
                 <td class="text-center">{{ metric.avg_duration_seconds|duration }}</td>
+                <td class="text-center">
+                    {% if metric.mttr_seconds is not none %}
+                        {{ metric.mttr_seconds|mttr }}
+                    {% else %}
+                        N/A
+                    {% endif %}
+                </td>
                 <td class="text-center success">{{ metric.success_count }}</td>
                 <td class="text-center failure">{{ metric.failure_count }}</td>
                 <td class="text-muted">

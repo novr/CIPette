@@ -156,26 +156,26 @@ def dashboard():
         metrics = get_metrics_by_repository(repository=repository, days=days)
         repositories = get_available_repositories()
 
-        # MTTR from cache (fast)
-        mttr = None
-        if metrics:
-            # Get MTTR from cache (repository-level, workflow_id=None)
-            cached = get_cached_metrics(repository=repository, workflow_id=None, period_days=days)
-            if cached and len(cached) > 0:
-                mttr = cached[0]['mttr_seconds']
-                logger.info(f"Using cached MTTR: {mttr}")
-            else:
-                logger.info("MTTR cache not available")
+        # Add workflow-level MTTR from cache to each metric
+        for metric in metrics:
+            workflow_id = metric['workflow_id']
+            repo = metric['repository']
 
-        logger.info(f"Loaded {len(metrics)} metrics, MTTR={mttr}")
+            # Get workflow-specific MTTR from cache
+            cached = get_cached_metrics(repository=repo, workflow_id=workflow_id, period_days=days)
+            if cached and len(cached) > 0:
+                metric['mttr_seconds'] = cached[0]['mttr_seconds']
+            else:
+                metric['mttr_seconds'] = None
+
+        logger.info(f"Loaded {len(metrics)} metrics with workflow-level MTTR")
 
         return render_template(
             'dashboard.html',
             metrics=metrics,
             repositories=repositories,
             selected_days=days,
-            selected_repository=repository,
-            mttr=mttr
+            selected_repository=repository
         )
 
     except sqlite3.OperationalError:
