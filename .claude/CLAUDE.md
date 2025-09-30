@@ -1,6 +1,6 @@
-# AI Development Guide: CI/CD Insights Dashboard 🚀
+# AI Development Guide: CIPette 🚀
 
-CI/CDプロセスの可視化により、ソフトウェアデリバリーの品質と効率を向上させるシステムです。
+**CIPette** - CI/CDプロセスの可視化により、ソフトウェアデリバリーの品質と効率を向上させるシステムです。
 
 GitHub Actionsからデータを収集し、基本的なCI/CDメトリクス（Duration, Success Rate, Throughput, MTTR）を可視化するシンプルなダッシュボードです。
 

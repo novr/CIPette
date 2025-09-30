@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a CI/CD Insights Dashboard that collects GitHub Actions workflow data and visualizes basic metrics (Duration, Success Rate, Throughput, MTTR) through a simple web interface.
+**CIPette** is a CI/CD Insights Dashboard that collects GitHub Actions workflow data and visualizes basic metrics (Duration, Success Rate, Throughput, MTTR) through a simple web interface.
 
 **Architecture**: GitHub Actions API → Python (Flask) → SQLite → HTML Dashboard
 
