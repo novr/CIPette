@@ -81,11 +81,13 @@ class GitHubDataCollector:
         for workflow in workflows:
             workflow_id = str(workflow.id)
             workflow_name = workflow.name
+            workflow_path = workflow.path
+            workflow_state = workflow.state
 
             print(f"  Processing workflow: {workflow_name} (ID: {workflow_id})")
 
             # Save workflow to database
-            insert_workflow(workflow_id, repo_name, workflow_name)
+            insert_workflow(workflow_id, repo_name, workflow_name, workflow_path, workflow_state)
 
             # Fetch workflow runs
             try:
@@ -104,19 +106,32 @@ class GitHubDataCollector:
                 runs_data = []
                 for run in runs:
                     run_id = str(run.id)
+                    run_number = run.run_number
                     commit_sha = run.head_sha
                     branch = run.head_branch
-
-                    # Map GitHub status/conclusion to our status
-                    status = self._determine_status(run)
+                    event = run.event
+                    status = run.status
+                    conclusion = run.conclusion
 
                     # Parse timestamps
                     started_at = self.parse_datetime(run.run_started_at or run.created_at)
                     completed_at = self.parse_datetime(run.updated_at if run.status == 'completed' else None)
 
+                    # Calculate duration in seconds
+                    duration_seconds = None
+                    if run.run_started_at and run.updated_at and run.status == 'completed':
+                        duration = run.updated_at - run.run_started_at
+                        duration_seconds = int(duration.total_seconds())
+
+                    # Get actor
+                    actor = run.actor.login if run.actor else None
+
+                    # Get URL
+                    url = run.html_url
+
                     runs_data.append((
-                        run_id, workflow_id, commit_sha, branch,
-                        status, started_at, completed_at
+                        run_id, workflow_id, run_number, commit_sha, branch, event,
+                        status, conclusion, started_at, completed_at, duration_seconds, actor, url
                     ))
 
                 # Batch insert all runs
@@ -129,22 +144,6 @@ class GitHubDataCollector:
                 continue
 
         return workflow_count, total_runs
-
-    def _determine_status(self, run):
-        """Determine run status from GitHub API response."""
-        conclusion = run.conclusion
-        status = run.status
-
-        if conclusion == 'success':
-            return 'success'
-        elif conclusion == 'failure':
-            return 'failure'
-        elif conclusion == 'cancelled':
-            return 'cancelled'
-        elif status == 'in_progress':
-            return 'in_progress'
-        else:
-            return 'unknown'
 
     def collect_all_data(self):
         """Collect data for all configured repositories."""

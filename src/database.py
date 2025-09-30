@@ -21,7 +21,8 @@ def initialize_database():
             id TEXT PRIMARY KEY,
             repository TEXT NOT NULL,
             name TEXT NOT NULL,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            path TEXT,
+            state TEXT
         )
     ''')
 
@@ -30,12 +31,17 @@ def initialize_database():
         CREATE TABLE IF NOT EXISTS runs (
             id TEXT PRIMARY KEY,
             workflow_id TEXT NOT NULL,
+            run_number INTEGER,
             commit_sha TEXT,
             branch TEXT,
+            event TEXT,
             status TEXT NOT NULL,
+            conclusion TEXT,
             started_at DATETIME,
             completed_at DATETIME,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            duration_seconds INTEGER,
+            actor TEXT,
+            url TEXT,
             FOREIGN KEY (workflow_id) REFERENCES workflows (id)
         )
     ''')
@@ -56,53 +62,101 @@ def initialize_database():
         ON runs (completed_at)
     ''')
 
+    cursor.execute('''
+        CREATE INDEX IF NOT EXISTS idx_runs_repository
+        ON runs (workflow_id, started_at)
+    ''')
+
     conn.commit()
     conn.close()
     print("Database initialized successfully.")
 
 
-def insert_workflow(workflow_id, repository, name):
-    """Insert or update a workflow record."""
+def insert_workflow(workflow_id, repository, name, path=None, state=None):
+    """Insert or update a workflow record with idempotency."""
     conn = get_connection()
     cursor = conn.cursor()
 
     cursor.execute('''
-        INSERT OR REPLACE INTO workflows (id, repository, name)
-        VALUES (?, ?, ?)
-    ''', (workflow_id, repository, name))
+        INSERT INTO workflows (id, repository, name, path, state)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+            repository = excluded.repository,
+            name = excluded.name,
+            path = excluded.path,
+            state = excluded.state
+    ''', (workflow_id, repository, name, path, state))
 
     conn.commit()
     conn.close()
 
 
-def insert_run(run_id, workflow_id, commit_sha, branch, status, started_at, completed_at):
-    """Insert or update a workflow run record."""
+def insert_run(run_id, workflow_id, run_number, commit_sha, branch, event, status, conclusion,
+               started_at, completed_at, duration_seconds, actor, url):
+    """Insert or update a workflow run record with idempotency."""
     conn = get_connection()
     cursor = conn.cursor()
 
     cursor.execute('''
-        INSERT OR REPLACE INTO runs
-        (id, workflow_id, commit_sha, branch, status, started_at, completed_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    ''', (run_id, workflow_id, commit_sha, branch, status, started_at, completed_at))
+        INSERT INTO runs
+        (id, workflow_id, run_number, commit_sha, branch, event, status, conclusion,
+         started_at, completed_at, duration_seconds, actor, url)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+            workflow_id = excluded.workflow_id,
+            run_number = excluded.run_number,
+            commit_sha = excluded.commit_sha,
+            branch = excluded.branch,
+            event = excluded.event,
+            status = excluded.status,
+            conclusion = excluded.conclusion,
+            started_at = excluded.started_at,
+            completed_at = excluded.completed_at,
+            duration_seconds = excluded.duration_seconds,
+            actor = excluded.actor,
+            url = excluded.url
+    ''', (run_id, workflow_id, run_number, commit_sha, branch, event, status, conclusion,
+          started_at, completed_at, duration_seconds, actor, url))
 
     conn.commit()
     conn.close()
 
 
 def insert_runs_batch(runs_data):
-    """Insert or update multiple workflow run records in a single transaction."""
+    """Insert or update multiple workflow run records in a single transaction with idempotency.
+
+    Args:
+        runs_data: List of tuples with format:
+            (id, workflow_id, run_number, commit_sha, branch, event, status, conclusion,
+             started_at, completed_at, duration_seconds, actor, url)
+    """
     if not runs_data:
         return
 
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.executemany('''
-        INSERT OR REPLACE INTO runs
-        (id, workflow_id, commit_sha, branch, status, started_at, completed_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    ''', runs_data)
+    # Use ON CONFLICT for true upsert behavior
+    for run_data in runs_data:
+        cursor.execute('''
+            INSERT INTO runs
+            (id, workflow_id, run_number, commit_sha, branch, event, status, conclusion,
+             started_at, completed_at, duration_seconds, actor, url)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                workflow_id = excluded.workflow_id,
+                run_number = excluded.run_number,
+                commit_sha = excluded.commit_sha,
+                branch = excluded.branch,
+                event = excluded.event,
+                status = excluded.status,
+                conclusion = excluded.conclusion,
+                started_at = excluded.started_at,
+                completed_at = excluded.completed_at,
+                duration_seconds = excluded.duration_seconds,
+                actor = excluded.actor,
+                url = excluded.url
+        ''', run_data)
 
     conn.commit()
     conn.close()
