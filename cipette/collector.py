@@ -12,12 +12,7 @@ from github import (
 )
 
 from cipette.config import GITHUB_TOKEN, MAX_WORKFLOW_RUNS, TARGET_REPOSITORIES
-from cipette.database import (
-    calculate_and_cache_all_metrics,
-    initialize_database,
-    insert_runs_batch,
-    insert_workflow,
-)
+from cipette.database import initialize_database, insert_runs_batch, insert_workflow
 
 # Configure logging
 logging.basicConfig(
@@ -287,16 +282,6 @@ class GitHubDataCollector:
 
         # Save this run info
         self.save_last_run_info(repo_timestamps)
-
-        # Calculate and cache metrics for all repositories
-        if total_runs > 0:
-            logger.info("Calculating and caching metrics...")
-            try:
-                cached_count = calculate_and_cache_all_metrics()
-                logger.info(f"Successfully cached {cached_count} metric entries")
-            except Exception as e:
-                logger.error(f"Error caching metrics: {e}")
-                logger.warning("Metrics will be calculated on-demand")
 
 
 def main():

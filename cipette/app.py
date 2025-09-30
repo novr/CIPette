@@ -7,12 +7,7 @@ from pathlib import Path
 
 from flask import Flask, render_template, request
 
-from cipette.database import (
-    calculate_mttr,
-    get_cached_metrics,
-    get_connection,
-    get_metrics_by_repository,
-)
+from cipette.database import get_connection, get_metrics_by_repository
 
 # Configuration
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -152,21 +147,9 @@ def dashboard():
     logger.info(f"Dashboard accessed: days={days}, repository={repository}")
 
     try:
-        # Get metrics from database
+        # Get metrics from database (with MTTR included via views)
         metrics = get_metrics_by_repository(repository=repository, days=days)
         repositories = get_available_repositories()
-
-        # Add workflow-level MTTR from cache to each metric
-        for metric in metrics:
-            workflow_id = metric['workflow_id']
-            repo = metric['repository']
-
-            # Get workflow-specific MTTR from cache
-            cached = get_cached_metrics(repository=repo, workflow_id=workflow_id, period_days=days)
-            if cached and len(cached) > 0:
-                metric['mttr_seconds'] = cached[0]['mttr_seconds']
-            else:
-                metric['mttr_seconds'] = None
 
         logger.info(f"Loaded {len(metrics)} metrics with workflow-level MTTR")
 
