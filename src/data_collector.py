@@ -26,8 +26,8 @@ class GitHubDataCollector:
     def check_rate_limit(self):
         """Check and display current GitHub API rate limit status."""
         rate_limit = self.github.get_rate_limit()
-        core = rate_limit.core
-        print(f"  API Rate Limit: {core.remaining}/{core.limit} (resets at {core.reset})")
+        core = rate_limit.resources.core
+        print(f"  API Rate Limit: {core.remaining}/{core.limit} (resets at {core.reset.strftime('%Y-%m-%d %H:%M:%S')})")
 
         # Warn if running low
         if core.remaining < 100:
@@ -159,8 +159,8 @@ class GitHubDataCollector:
                             status, conclusion, started_at, completed_at, duration_seconds, actor, url
                         ))
 
-                    # Batch insert all runs
-                    insert_runs_batch(runs_data)
+                    # Batch insert all runs using shared connection
+                    insert_runs_batch(runs_data, conn=conn)
                     total_runs += len(runs)
                     print(f"    Saved {len(runs)} runs to database")
 

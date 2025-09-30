@@ -91,9 +91,11 @@ def test_collect_repository_data_github_exception(collector):
 
     # Mock rate limit
     mock_rate_limit = Mock()
-    mock_rate_limit.core.remaining = 5000
-    mock_rate_limit.core.limit = 5000
-    mock_rate_limit.core.reset = '2025-01-01 12:00:00'
+    mock_rate_limit.resources.core.remaining = 5000
+    mock_rate_limit.resources.core.limit = 5000
+    mock_reset = Mock()
+    mock_reset.strftime.return_value = '2025-01-01 12:00:00'
+    mock_rate_limit.resources.core.reset = mock_reset
     mock_github.get_rate_limit.return_value = mock_rate_limit
 
     collector.github = mock_github
@@ -108,9 +110,11 @@ def test_collect_repository_data_success(collector):
     """Test successful data collection."""
     # Mock rate limit
     mock_rate_limit = Mock()
-    mock_rate_limit.core.remaining = 5000
-    mock_rate_limit.core.limit = 5000
-    mock_rate_limit.core.reset = '2025-01-01 12:00:00'
+    mock_rate_limit.resources.core.remaining = 5000
+    mock_rate_limit.resources.core.limit = 5000
+    mock_reset = Mock()
+    mock_reset.strftime.return_value = '2025-01-01 12:00:00'
+    mock_rate_limit.resources.core.reset = mock_reset
     collector.github.get_rate_limit.return_value = mock_rate_limit
 
     # Mock repository

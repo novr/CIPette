@@ -152,18 +152,23 @@ def insert_run(run_id, workflow_id, run_number, commit_sha, branch, event, statu
     conn.close()
 
 
-def insert_runs_batch(runs_data):
+def insert_runs_batch(runs_data, conn=None):
     """Insert or update multiple workflow run records in a single transaction with idempotency.
 
     Args:
         runs_data: List of tuples with format:
             (id, workflow_id, run_number, commit_sha, branch, event, status, conclusion,
              started_at, completed_at, duration_seconds, actor, url)
+        conn: Optional database connection (for batch operations)
     """
     if not runs_data:
         return
 
-    conn = get_connection()
+    should_close = False
+    if conn is None:
+        conn = get_connection()
+        should_close = True
+
     cursor = conn.cursor()
 
     try:
@@ -189,12 +194,15 @@ def insert_runs_batch(runs_data):
                     url = excluded.url
             ''', run_data)
 
-        conn.commit()
+        if should_close:
+            conn.commit()
     except Exception as e:
-        conn.rollback()
+        if should_close:
+            conn.rollback()
         raise e
     finally:
-        conn.close()
+        if should_close:
+            conn.close()
 
 
 def get_workflows():
