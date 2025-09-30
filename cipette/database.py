@@ -329,6 +329,83 @@ def get_runs(workflow_id=None, limit=None, repository=None, status=None, conclus
     return runs
 
 
+def _build_metrics_query(repository=None, days=None):
+    """Build unified metrics query with optional filters.
+
+    Args:
+        repository: Filter by repository name (None for all)
+        days: Filter by last N days (None for all time)
+
+    Returns:
+        Tuple of (query_string, params_list)
+    """
+    # Common metric aggregations (avoid duplication)
+    metrics_select = '''
+        COUNT(*) as total_runs,
+        SUM(CASE WHEN r.conclusion = 'success' THEN 1 ELSE 0 END) as success_count,
+        SUM(CASE WHEN r.conclusion = 'failure' THEN 1 ELSE 0 END) as failure_count,
+        ROUND(AVG(r.duration_seconds), 2) as avg_duration_seconds,
+        ROUND(
+            CAST(SUM(CASE WHEN r.conclusion = 'success' THEN 1 ELSE 0 END) AS FLOAT) /
+            NULLIF(SUM(CASE WHEN r.conclusion IN ('success', 'failure') THEN 1 ELSE 0 END), 0) * 100,
+            2
+        ) as success_rate,
+        MIN(r.started_at) as first_run,
+        MAX(r.started_at) as last_run
+    '''
+
+    # MTTR subquery with optional period filter
+    mttr_period_filter = "AND r1.started_at >= datetime('now', '-' || ? || ' days')" if days else ""
+    mttr_subquery = f'''
+        (
+            SELECT ROUND(AVG((julianday(r2.completed_at) - julianday(r1.completed_at)) * 86400), 2)
+            FROM runs r1
+            LEFT JOIN runs r2 ON
+                r2.workflow_id = r1.workflow_id AND
+                r2.completed_at > r1.completed_at AND
+                r2.conclusion = 'success' AND
+                r2.status = 'completed'
+            WHERE r1.workflow_id = w.id
+                AND r1.conclusion = 'failure'
+                AND r1.status = 'completed'
+                AND r2.completed_at IS NOT NULL
+                {mttr_period_filter}
+        ) as mttr_seconds
+    '''
+
+    # Build WHERE conditions
+    where_conditions = ["r.status = 'completed'"]
+    params = []
+
+    if days:
+        where_conditions.append("r.started_at >= datetime('now', '-' || ? || ' days')")
+        params.append(days)
+        params.append(days)  # For MTTR subquery
+
+    if repository:
+        where_conditions.append("w.repository = ?")
+        params.append(repository)
+
+    where_clause = " AND ".join(where_conditions)
+
+    # Unified query for all cases
+    query = f'''
+        SELECT
+            w.repository,
+            w.name as workflow_name,
+            w.id as workflow_id,
+            {metrics_select},
+            {mttr_subquery}
+        FROM workflows w
+        LEFT JOIN runs r ON w.id = r.workflow_id
+        WHERE {where_clause}
+        GROUP BY w.repository, w.id, w.name
+        ORDER BY w.repository, w.name
+    '''
+
+    return query, params
+
+
 # Internal function with TTL-based caching
 @lru_cache(maxsize=128)
 def _get_metrics_cached(repository, days, cache_key):
@@ -345,70 +422,8 @@ def _get_metrics_cached(repository, days, cache_key):
     conn = get_connection()
     cursor = conn.cursor()
 
-    # Build query using views with period filter
-    conditions = []
-    params = []
-
-    if repository:
-        conditions.append("m.repository = ?")
-        params.append(repository)
-
-    # Period filter applied to the underlying runs
-    # We need to recalculate if days is specified
-    if days:
-        # For period filtering, we can't use the view directly
-        # Use a modified query that filters runs
-        query = f'''
-            SELECT
-                w.repository,
-                w.name as workflow_name,
-                w.id as workflow_id,
-                COUNT(*) as total_runs,
-                SUM(CASE WHEN r.conclusion = 'success' THEN 1 ELSE 0 END) as success_count,
-                SUM(CASE WHEN r.conclusion = 'failure' THEN 1 ELSE 0 END) as failure_count,
-                ROUND(AVG(r.duration_seconds), 2) as avg_duration_seconds,
-                ROUND(
-                    CAST(SUM(CASE WHEN r.conclusion = 'success' THEN 1 ELSE 0 END) AS FLOAT) /
-                    NULLIF(SUM(CASE WHEN r.conclusion IN ('success', 'failure') THEN 1 ELSE 0 END), 0) * 100,
-                    2
-                ) as success_rate,
-                MIN(r.started_at) as first_run,
-                MAX(r.started_at) as last_run,
-                (
-                    SELECT ROUND(AVG((julianday(r2.completed_at) - julianday(r1.completed_at)) * 86400), 2)
-                    FROM runs r1
-                    LEFT JOIN runs r2 ON
-                        r2.workflow_id = r1.workflow_id AND
-                        r2.completed_at > r1.completed_at AND
-                        r2.conclusion = 'success' AND
-                        r2.status = 'completed'
-                    WHERE r1.workflow_id = w.id
-                        AND r1.conclusion = 'failure'
-                        AND r1.status = 'completed'
-                        AND r2.completed_at IS NOT NULL
-                        AND r1.started_at >= datetime('now', '-' || ? || ' days')
-                ) as mttr_seconds
-            FROM workflows w
-            LEFT JOIN runs r ON w.id = r.workflow_id
-            WHERE r.status = 'completed'
-                AND r.started_at >= datetime('now', '-' || ? || ' days')
-                {' AND w.repository = ?' if repository else ''}
-            GROUP BY w.repository, w.id, w.name
-            ORDER BY w.repository, w.name
-        '''
-        params = [days, days] + ([repository] if repository else [])
-    else:
-        # Use view for all-time metrics (fastest)
-        where_clause = " WHERE " + " AND ".join(conditions) if conditions else ""
-        query = f'''
-            SELECT
-                m.*,
-                t.mttr_seconds
-            FROM workflow_metrics_view m
-            LEFT JOIN mttr_view t ON m.workflow_id = t.workflow_id
-            {where_clause}
-            ORDER BY m.repository, m.workflow_name
-        '''
+    # Build unified query (eliminates code duplication)
+    query, params = _build_metrics_query(repository=repository, days=days)
 
     cursor.execute(query, params)
     rows = cursor.fetchall()
