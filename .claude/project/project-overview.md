@@ -33,12 +33,18 @@
 
 ```
 GitHub Actions API → Python (Flask) → SQLite → HTML ダッシュボード
+                           ↓
+                    Background Worker (MTTR Cache)
+                           ↓
+                    In-Memory Cache (Metrics)
 ```
 
 **シンプルな構成**:
 - GitHub APIからデータ取得
 - SQLiteにローカル保存
 - Flaskでウェブ表示
+- **Background Worker**: MTTR値を定期的に事前計算
+- **In-Memory Cache**: メトリクスをキャッシュして高速化
 
 ---
 
