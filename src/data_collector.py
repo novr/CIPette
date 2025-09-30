@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 from datetime import UTC, datetime
 
@@ -12,6 +13,14 @@ from github import (
 
 from config import GITHUB_TOKEN, MAX_WORKFLOW_RUNS, TARGET_REPOSITORIES
 from database import initialize_database, insert_runs_batch, insert_workflow
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+logger = logging.getLogger(__name__)
 
 
 class GitHubDataCollector:
@@ -27,11 +36,11 @@ class GitHubDataCollector:
         """Check and display current GitHub API rate limit status."""
         rate_limit = self.github.get_rate_limit()
         core = rate_limit.resources.core
-        print(f"  API Rate Limit: {core.remaining}/{core.limit} (resets at {core.reset.strftime('%Y-%m-%d %H:%M:%S')})")
+        logger.info(f"API Rate Limit: {core.remaining}/{core.limit} (resets at {core.reset.strftime('%Y-%m-%d %H:%M:%S')})")
 
         # Warn if running low
         if core.remaining < 100:
-            print(f"  WARNING: Only {core.remaining} API calls remaining!")
+            logger.warning(f"Only {core.remaining} API calls remaining!")
 
         return core.remaining
 
@@ -44,7 +53,7 @@ class GitHubDataCollector:
             with open(self.LAST_RUN_FILE) as f:
                 return json.load(f)
         except (OSError, json.JSONDecodeError) as e:
-            print(f"Warning: Could not read last run file: {e}")
+            logger.warning(f"Could not read last run file: {e}")
             return None
 
     def save_last_run_info(self, repo_timestamps):
@@ -62,7 +71,7 @@ class GitHubDataCollector:
             with open(self.LAST_RUN_FILE, 'w') as f:
                 json.dump(last_run_info, f, indent=2)
         except OSError as e:
-            print(f"Warning: Could not save last run file: {e}")
+            logger.warning(f"Could not save last run file: {e}")
 
     def parse_datetime(self, dt):
         """Convert datetime to string format for SQLite."""
@@ -77,10 +86,9 @@ class GitHubDataCollector:
             repo_name: Repository name in format 'owner/repo'
             since: ISO 8601 datetime string to fetch runs created after this time
         """
-        print(f"\nCollecting data for repository: {repo_name}")
-        print(f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        logger.info(f"Collecting data for repository: {repo_name}")
         if since:
-            print(f"Incremental update since: {since}")
+            logger.info(f"Incremental update since: {since}")
 
         # Check rate limit before starting
         self.check_rate_limit()
@@ -88,129 +96,126 @@ class GitHubDataCollector:
         try:
             repo = self.github.get_repo(repo_name)
         except GithubException as e:
-            print(f"Error accessing repository {repo_name}: {e}")
+            logger.error(f"Error accessing repository {repo_name}: {e}")
             return 0, 0  # Return counts for tracking
 
         # Get all workflows with pagination
         workflows = repo.get_workflows()
         workflow_count = workflows.totalCount
         total_runs = 0
-        print(f"Found {workflow_count} workflows")
+        logger.info(f"Found {workflow_count} workflows")
 
         # Use a single database connection for all workflow operations
         # Repository-level transaction: all or nothing
         from database import get_connection
-        conn = get_connection()
 
         try:
-            for workflow in workflows:
-                workflow_id = str(workflow.id)
-                workflow_name = workflow.name
-                workflow_path = workflow.path
-                workflow_state = workflow.state
+            with get_connection() as conn:
+                for workflow in workflows:
+                    workflow_id = str(workflow.id)
+                    workflow_name = workflow.name
+                    workflow_path = workflow.path
+                    workflow_state = workflow.state
 
-                print(f"  Processing workflow: {workflow_name} (ID: {workflow_id})")
+                    logger.info(f"Processing workflow: {workflow_name} (ID: {workflow_id})")
 
-                # Save workflow to database using shared connection
-                insert_workflow(workflow_id, repo_name, workflow_name, workflow_path, workflow_state, conn=conn)
+                    # Save workflow to database using shared connection
+                    insert_workflow(workflow_id, repo_name, workflow_name, workflow_path, workflow_state, conn=conn)
 
-                # Fetch workflow runs
-                try:
-                    # Get runs with optional time filter
-                    if since:
-                        # For incremental updates, fetch all new runs without limit
-                        runs_paginated = workflow.get_runs(created=f'>={since}')
-                        runs = list(runs_paginated)
-                    else:
-                        # For full fetch, limit to MAX_WORKFLOW_RUNS
-                        runs_paginated = workflow.get_runs()
-                        runs = list(runs_paginated[:MAX_WORKFLOW_RUNS])
+                    # Fetch workflow runs
+                    try:
+                        # Get runs with optional time filter
+                        if since:
+                            # For incremental updates, fetch all new runs without limit
+                            runs_paginated = workflow.get_runs(created=f'>={since}')
+                            runs = list(runs_paginated)
+                        else:
+                            # For full fetch, limit to MAX_WORKFLOW_RUNS
+                            runs_paginated = workflow.get_runs()
+                            runs = list(runs_paginated[:MAX_WORKFLOW_RUNS])
 
-                    print(f"    Found {len(runs)} runs")
+                        logger.info(f"Found {len(runs)} runs for workflow {workflow_id}")
 
-                    # Prepare batch data
-                    runs_data = []
-                    for run in runs:
-                        run_id = str(run.id)
-                        run_number = run.run_number
-                        commit_sha = run.head_sha
-                        branch = run.head_branch
-                        event = run.event
-                        status = run.status
-                        conclusion = run.conclusion
+                        # Prepare batch data
+                        runs_data = []
+                        for run in runs:
+                            run_id = str(run.id)
+                            run_number = run.run_number
+                            commit_sha = run.head_sha
+                            branch = run.head_branch
+                            event = run.event
+                            status = run.status
+                            conclusion = run.conclusion
 
-                        # Parse timestamps
-                        started_at = self.parse_datetime(run.run_started_at or run.created_at)
-                        completed_at = self.parse_datetime(run.updated_at if run.status == 'completed' else None)
+                            # Parse timestamps
+                            started_at = self.parse_datetime(run.run_started_at or run.created_at)
+                            completed_at = self.parse_datetime(run.updated_at if run.status == 'completed' else None)
 
-                        # Calculate duration in seconds
-                        duration_seconds = None
-                        if run.run_started_at and run.updated_at and run.status == 'completed':
-                            duration = run.updated_at - run.run_started_at
-                            duration_seconds = int(duration.total_seconds())
+                            # Calculate duration in seconds
+                            duration_seconds = None
+                            if run.run_started_at and run.updated_at and run.status == 'completed':
+                                duration = run.updated_at - run.run_started_at
+                                duration_seconds = int(duration.total_seconds())
 
-                        # Get actor
-                        actor = run.actor.login if run.actor else None
+                            # Get actor
+                            actor = run.actor.login if run.actor else None
 
-                        # Get URL
-                        url = run.html_url
+                            # Get URL
+                            url = run.html_url
 
-                        runs_data.append((
-                            run_id, workflow_id, run_number, commit_sha, branch, event,
-                            status, conclusion, started_at, completed_at, duration_seconds, actor, url
-                        ))
+                            runs_data.append((
+                                run_id, workflow_id, run_number, commit_sha, branch, event,
+                                status, conclusion, started_at, completed_at, duration_seconds, actor, url
+                            ))
 
-                    # Batch insert all runs using shared connection
-                    insert_runs_batch(runs_data, conn=conn)
-                    total_runs += len(runs)
-                    print(f"    Saved {len(runs)} runs to database")
+                        # Batch insert all runs using shared connection
+                        insert_runs_batch(runs_data, conn=conn)
+                        total_runs += len(runs)
+                        logger.info(f"Saved {len(runs)} runs to database for workflow {workflow_id}")
 
-                except GithubException as e:
-                    print(f"    Error fetching runs for workflow {workflow_id}: {e}")
-                    # Continue with other workflows, don't break the transaction
-                    continue
+                    except GithubException as e:
+                        logger.error(f"Error fetching runs for workflow {workflow_id}: {e}")
+                        # Continue with other workflows, don't break the transaction
+                        continue
 
-            # Commit entire repository transaction
-            conn.commit()
-            print(f"  Successfully committed {workflow_count} workflows and {total_runs} runs")
+                # Commit entire repository transaction
+                conn.commit()
+                logger.info(f"Successfully committed {workflow_count} workflows and {total_runs} runs")
 
         except Exception as e:
-            # Rollback entire repository transaction on any error
-            conn.rollback()
-            print(f"  Error: Transaction rolled back for repository {repo_name}: {e}")
+            # Context manager handles rollback automatically
+            logger.error(f"Transaction rolled back for repository {repo_name}: {e}")
             raise  # Re-raise to notify caller
-        finally:
-            conn.close()
 
         return workflow_count, total_runs
 
     def collect_all_data(self):
         """Collect data for all configured repositories."""
         if not GITHUB_TOKEN:
-            print("Error: GITHUB_TOKEN not found in environment variables")
+            logger.error("GITHUB_TOKEN not found in environment variables")
             return
 
         if not TARGET_REPOSITORIES:
-            print("Error: TARGET_REPOSITORIES not configured")
-            print("Please set TARGET_REPOSITORIES in .env file")
-            print("Example: TARGET_REPOSITORIES=owner/repo1,owner/repo2")
+            logger.error("TARGET_REPOSITORIES not configured")
+            logger.error("Please set TARGET_REPOSITORIES in .env file")
+            logger.error("Example: TARGET_REPOSITORIES=owner/repo1,owner/repo2")
             return
 
         # Show last run info
         last_run = self.get_last_run_info()
         if last_run:
-            print("=" * 60)
-            print("Last data collection:")
-            print(f"  Timestamp: {last_run['timestamp']}")
+            logger.info("=" * 60)
+            logger.info("Last data collection:")
+            logger.info(f"  Timestamp: {last_run['timestamp']}")
             repos_info = last_run.get('repositories', {})
             if isinstance(repos_info, dict):
-                print("  Repositories:")
+                logger.info("  Repositories:")
                 for repo, ts in repos_info.items():
-                    print(f"    - {repo}: {ts}")
+                    logger.info(f"    - {repo}: {ts}")
             else:
                 # Old format compatibility
-                print(f"  Repositories: {', '.join(repos_info)}")
-            print("=" * 60)
+                logger.info(f"  Repositories: {', '.join(repos_info)}")
+            logger.info("=" * 60)
 
         # Initialize database
         initialize_database()
@@ -219,10 +224,10 @@ class GitHubDataCollector:
         repos = [r.strip() for r in TARGET_REPOSITORIES.split(',') if r.strip()]
 
         if not repos:
-            print("Error: No repositories configured")
+            logger.error("No repositories configured")
             return
 
-        print(f"Starting data collection for {len(repos)} repository(ies)...")
+        logger.info(f"Starting data collection for {len(repos)} repository(ies)...")
 
         total_workflows = 0
         total_runs = 0
@@ -245,35 +250,35 @@ class GitHubDataCollector:
                 repo_timestamps[repo] = start_time
 
             except BadCredentialsException:
-                print(f"Error: Invalid GitHub credentials for {repo}")
-                print("Please check your GITHUB_TOKEN")
+                logger.error(f"Invalid GitHub credentials for {repo}")
+                logger.error("Please check your GITHUB_TOKEN")
                 break  # No point continuing with bad credentials
 
             except RateLimitExceededException as e:
-                print(f"Error: GitHub API rate limit exceeded for {repo}")
-                print(f"Rate limit resets at: {e}")
+                logger.error(f"GitHub API rate limit exceeded for {repo}")
+                logger.error(f"Rate limit resets at: {e}")
                 break  # Stop to avoid further rate limit violations
 
             except GithubException as e:
-                print(f"GitHub API error for {repo}: {e.status} - {e.data.get('message', 'Unknown error')}")
-                print(f"Skipping {repo}, continuing with next repository...")
+                logger.error(f"GitHub API error for {repo}: {e.status} - {e.data.get('message', 'Unknown error')}")
+                logger.info(f"Skipping {repo}, continuing with next repository...")
                 continue  # Try next repository
 
             except OSError as e:
-                print(f"File system error for {repo}: {e}")
-                print(f"Skipping {repo}, continuing with next repository...")
+                logger.error(f"File system error for {repo}: {e}")
+                logger.info(f"Skipping {repo}, continuing with next repository...")
                 continue  # Try next repository
 
             except Exception as e:
                 # Catch database errors and other unexpected errors
-                print(f"Unexpected error collecting data for {repo}: {type(e).__name__}: {e}")
-                print(f"Repository {repo} data collection failed and rolled back")
-                print("Continuing with next repository...")
+                logger.error(f"Unexpected error collecting data for {repo}: {type(e).__name__}: {e}")
+                logger.warning(f"Repository {repo} data collection failed and rolled back")
+                logger.info("Continuing with next repository...")
                 continue  # Try next repository
 
-        print("\nData collection completed!")
-        print(f"Total workflows collected: {total_workflows}")
-        print(f"Total runs collected: {total_runs}")
+        logger.info("Data collection completed!")
+        logger.info(f"Total workflows collected: {total_workflows}")
+        logger.info(f"Total runs collected: {total_runs}")
 
         # Save this run info
         self.save_last_run_info(repo_timestamps)

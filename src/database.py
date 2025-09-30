@@ -1,11 +1,23 @@
+import logging
 import sqlite3
 from datetime import datetime
 
 from config import DATABASE_PATH
 
+logger = logging.getLogger(__name__)
+
 
 def get_connection():
-    """Create and return a database connection."""
+    """Create and return a database connection with context manager support.
+
+    Returns:
+        sqlite3.Connection: Database connection that can be used as context manager
+
+    Example:
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM workflows")
+    """
     conn = sqlite3.connect(DATABASE_PATH)
     conn.row_factory = sqlite3.Row  # Enable column access by name
     return conn
@@ -85,7 +97,7 @@ def initialize_database():
 
     conn.commit()
     conn.close()
-    print("Database initialized successfully.")
+    logger.info("Database initialized successfully.")
 
 
 def insert_workflow(workflow_id, repository, name, path=None, state=None, conn=None):
@@ -175,27 +187,26 @@ def insert_runs_batch(runs_data, conn=None):
     cursor = conn.cursor()
 
     try:
-        # Use ON CONFLICT for true upsert behavior
-        for run_data in runs_data:
-            cursor.execute('''
-                INSERT INTO runs
-                (id, workflow_id, run_number, commit_sha, branch, event, status, conclusion,
-                 started_at, completed_at, duration_seconds, actor, url)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(id) DO UPDATE SET
-                    workflow_id = excluded.workflow_id,
-                    run_number = excluded.run_number,
-                    commit_sha = excluded.commit_sha,
-                    branch = excluded.branch,
-                    event = excluded.event,
-                    status = excluded.status,
-                    conclusion = excluded.conclusion,
-                    started_at = excluded.started_at,
-                    completed_at = excluded.completed_at,
-                    duration_seconds = excluded.duration_seconds,
-                    actor = excluded.actor,
-                    url = excluded.url
-            ''', run_data)
+        # Use executemany for better performance with ON CONFLICT for upsert
+        cursor.executemany('''
+            INSERT INTO runs
+            (id, workflow_id, run_number, commit_sha, branch, event, status, conclusion,
+             started_at, completed_at, duration_seconds, actor, url)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                workflow_id = excluded.workflow_id,
+                run_number = excluded.run_number,
+                commit_sha = excluded.commit_sha,
+                branch = excluded.branch,
+                event = excluded.event,
+                status = excluded.status,
+                conclusion = excluded.conclusion,
+                started_at = excluded.started_at,
+                completed_at = excluded.completed_at,
+                duration_seconds = excluded.duration_seconds,
+                actor = excluded.actor,
+                url = excluded.url
+        ''', runs_data)
 
         if should_close:
             conn.commit()
