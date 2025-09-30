@@ -34,6 +34,7 @@ dev = [
 
 [project.scripts]
 cipette-collect = "cipette.collector:main"
+cipette-web = "cipette.app:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
