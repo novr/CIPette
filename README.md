@@ -65,8 +65,8 @@ uv run pytest
 # Only unit tests
 uv run pytest tests/test_data_collector.py tests/test_database.py
 
-# With coverage
-uv run pytest --cov=cipette
+# Verbose output
+uv run pytest -v
 ```
 
 ### Lint
