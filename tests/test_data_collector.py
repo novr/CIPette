@@ -1,9 +1,10 @@
-import pytest
 import json
 import os
 import sys
-from unittest.mock import Mock, patch, MagicMock
 from datetime import datetime
+from unittest.mock import Mock, patch
+
+import pytest
 
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
@@ -76,7 +77,7 @@ def test_save_last_run_info(collector, tmp_path):
 
     assert last_run_file.exists()
 
-    with open(last_run_file, 'r') as f:
+    with open(last_run_file) as f:
         data = json.load(f)
 
     assert data['repositories'] == repo_timestamps
@@ -166,10 +167,10 @@ def test_collect_all_data_no_token(collector):
 
 def test_collect_all_data_no_repositories(collector):
     """Test behavior when TARGET_REPOSITORIES is not set."""
-    with patch('data_collector.TARGET_REPOSITORIES', ''):
-        with patch('data_collector.initialize_database'):
-            # Should return early without error
-            collector.collect_all_data()
+    with patch('data_collector.TARGET_REPOSITORIES', ''), \
+         patch('data_collector.initialize_database'):
+        # Should return early without error
+        collector.collect_all_data()
 
 
 def test_collect_all_data_with_last_run(collector, tmp_path):

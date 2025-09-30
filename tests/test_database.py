@@ -1,18 +1,13 @@
-import pytest
-import sqlite3
-import tempfile
 import os
+import sqlite3
 import sys
+import tempfile
+
+import pytest
 
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-from database import (
-    get_connection, initialize_database, insert_workflow, insert_run,
-    insert_runs_batch, get_workflows, get_runs, get_metrics_by_repository,
-    calculate_mttr
-)
-from config import DATABASE_PATH
 
 
 @pytest.fixture
@@ -28,6 +23,7 @@ def test_db():
 
     # Reload database module with new path
     import importlib
+
     import database
     database.DATABASE_PATH = test_db_path
     importlib.reload(database)

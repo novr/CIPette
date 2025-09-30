@@ -1,9 +1,11 @@
-from github import Github, GithubException, Auth
-from datetime import datetime
 import json
 import os
-from config import GITHUB_TOKEN, TARGET_REPOSITORIES, MAX_WORKFLOW_RUNS
-from database import initialize_database, insert_workflow, insert_runs_batch
+from datetime import datetime
+
+from github import Auth, Github, GithubException
+
+from config import GITHUB_TOKEN, MAX_WORKFLOW_RUNS, TARGET_REPOSITORIES
+from database import initialize_database, insert_runs_batch, insert_workflow
 
 
 class GitHubDataCollector:
@@ -21,9 +23,9 @@ class GitHubDataCollector:
             return None
 
         try:
-            with open(self.LAST_RUN_FILE, 'r') as f:
+            with open(self.LAST_RUN_FILE) as f:
                 return json.load(f)
-        except (json.JSONDecodeError, IOError) as e:
+        except (OSError, json.JSONDecodeError) as e:
             print(f"Warning: Could not read last run file: {e}")
             return None
 
@@ -45,7 +47,7 @@ class GitHubDataCollector:
         try:
             with open(self.LAST_RUN_FILE, 'w') as f:
                 json.dump(last_run_info, f, indent=2)
-        except IOError as e:
+        except OSError as e:
             print(f"Warning: Could not save last run file: {e}")
 
     def parse_datetime(self, dt):
@@ -93,8 +95,6 @@ class GitHubDataCollector:
             try:
                 # Get runs with optional time filter
                 if since:
-                    # Convert since to datetime for comparison
-                    since_dt = datetime.strptime(since, '%Y-%m-%d %H:%M:%S')
                     runs_paginated = workflow.get_runs(created=f'>={since}')
                 else:
                     runs_paginated = workflow.get_runs()

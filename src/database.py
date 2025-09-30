@@ -1,5 +1,6 @@
 import sqlite3
 from datetime import datetime
+
 from config import DATABASE_PATH
 
 
@@ -263,7 +264,7 @@ def get_metrics_by_repository(repository=None, days=None):
     params = []
 
     if days:
-        date_filter = "AND r.started_at >= datetime('now', '-{} days')".format(int(days))
+        date_filter = f"AND r.started_at >= datetime('now', '-{int(days)} days')"
 
     if repository:
         repo_filter = "AND w.repository = ?"
@@ -346,7 +347,7 @@ def calculate_mttr(workflow_id=None, repository=None, days=None):
         params.append(repository)
 
     if days:
-        filters.append("r1.started_at >= datetime('now', '-{} days')".format(int(days)))
+        filters.append(f"r1.started_at >= datetime('now', '-{int(days)} days')")
 
     where_clause = " AND ".join(filters)
 
