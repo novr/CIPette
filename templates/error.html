@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+
+{% block title %}Error - CIPette{% endblock %}
+
+{% block content %}
+<div class="error-container">
+    <h2>⚠️ Error</h2>
+    <p class="error-message">{{ error_message }}</p>
+
+    {% if "cipette-collect" in error_message %}
+    <div class="help-section">
+        <h3>Quick Fix:</h3>
+        <p>Run the data collector to initialize the database:</p>
+        <pre><code>uv run cipette-collect</code></pre>
+    </div>
+    {% endif %}
+
+    <a href="/" class="button">Back to Dashboard</a>
+</div>
+{% endblock %}

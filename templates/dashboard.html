@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="filters">
+    <form method="get" class="filter-form">
+        <div class="filter-group">
+            <label for="days">Period:</label>
+            <select name="days" id="days">
+                <option value="">All time</option>
+                <option value="7" {% if selected_days == 7 %}selected{% endif %}>Last 7 days</option>
+                <option value="30" {% if selected_days == 30 %}selected{% endif %}>Last 30 days</option>
+                <option value="90" {% if selected_days == 90 %}selected{% endif %}>Last 90 days</option>
+            </select>
+        </div>
+
+        <div class="filter-group">
+            <label for="repository">Repository:</label>
+            <select name="repository" id="repository">
+                <option value="">All repositories</option>
+                {% for repo in repositories %}
+                <option value="{{ repo }}" {% if selected_repository == repo %}selected{% endif %}>
+                    {{ repo }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="filter-group">
+            <label>
+                <input type="checkbox" name="show_mttr" value="true"
+                       {% if show_mttr %}checked{% endif %}>
+                Calculate MTTR (slower)
+            </label>
+        </div>
+
+        <button type="submit" class="button-primary">Apply Filters</button>
+    </form>
+</div>
+
+{% if mttr %}
+<div class="mttr-summary">
+    <h3>Mean Time To Recovery (MTTR)</h3>
+    <p class="mttr-value">{{ mttr|mttr }}</p>
+</div>
+{% endif %}
+
+<div class="metrics-table">
+    {% if metrics %}
+    <table>
+        <thead>
+            <tr>
+                <th>Repository</th>
+                <th>Workflow</th>
+                <th>Total Runs</th>
+                <th>Success Rate</th>
+                <th>Avg Duration</th>
+                <th class="success">Success</th>
+                <th class="failure">Failure</th>
+                <th>Period</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for metric in metrics %}
+            <tr>
+                <td class="repo-name">{{ metric.repository }}</td>
+                <td class="workflow-name">{{ metric.workflow_name }}</td>
+                <td class="text-center">{{ metric.total_runs }}</td>
+                <td class="success-rate success-rate-{{ metric.success_rate|rate_class }}">
+                    {% if metric.success_rate is not none %}
+                        {{ metric.success_rate }}%
+                    {% else %}
+                        N/A
+                    {% endif %}
+                </td>
+                <td class="text-center">{{ metric.avg_duration_seconds|duration }}</td>
+                <td class="text-center success">{{ metric.success_count }}</td>
+                <td class="text-center failure">{{ metric.failure_count }}</td>
+                <td class="text-muted">
+                    {% if metric.first_run and metric.last_run %}
+                        {{ metric.first_run[:10] }} - {{ metric.last_run[:10] }}
+                    {% else %}
+                        N/A
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">
+        <h3>No Data Available</h3>
+        <p>No workflow runs found. Please run data collection first:</p>
+        <pre><code>uv run cipette-collect</code></pre>
+        <p class="help-text">Make sure you have configured your GitHub token and target repositories in <code>.env</code></p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}CIPette Dashboard{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <header>
+        <h1>🧪 CIPette - CI/CD Insights</h1>
+        <nav>
+            <a href="/">Dashboard</a>
+        </nav>
+    </header>
+
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer>
+        <p>Powered by CIPette | <a href="https://github.com/novr/CIPette" target="_blank">GitHub</a></p>
+    </footer>
+</body>
+</html>
