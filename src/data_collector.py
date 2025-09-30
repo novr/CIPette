@@ -1,6 +1,6 @@
 import json
 import os
-from datetime import datetime
+from datetime import UTC, datetime
 
 from github import Auth, Github, GithubException
 
@@ -45,12 +45,12 @@ class GitHubDataCollector:
         """Save last run information to file.
 
         Args:
-            repo_timestamps: Dict of {repo_name: timestamp}
+            repo_timestamps: Dict of {repo_name: ISO 8601 UTC timestamp}
             workflow_count: Total workflows collected
             run_count: Total runs collected
         """
         last_run_info = {
-            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'timestamp': datetime.now(UTC).isoformat(),
             'repositories': repo_timestamps,
             'workflow_count': workflow_count,
             'run_count': run_count
@@ -221,18 +221,18 @@ class GitHubDataCollector:
 
         for repo in repos:
             try:
-                # Get last run timestamp for this repo
+                # Get last run timestamp for this repo (ISO 8601 UTC)
                 since = None
                 if last_run and isinstance(last_run.get('repositories'), dict):
                     since = last_run['repositories'].get(repo)
 
                 # Collect data
-                start_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                start_time = datetime.now(UTC).isoformat()
                 wf_count, run_count = self.collect_repository_data(repo, since=since)
                 total_workflows += wf_count
                 total_runs += run_count
 
-                # Record timestamp for this repo
+                # Record timestamp for this repo (ISO 8601 UTC)
                 repo_timestamps[repo] = start_time
             except Exception as e:
                 print(f"Error collecting data for {repo}: {e}")
