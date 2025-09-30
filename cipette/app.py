@@ -1,13 +1,20 @@
 """Flask web application for CIPette dashboard."""
 
 import logging
+import os
 import sqlite3
+import threading
+import time
 from functools import lru_cache
 from pathlib import Path
 
 from flask import Flask, render_template, request
 
-from cipette.database import get_connection, get_metrics_by_repository
+from cipette.database import (
+    get_connection,
+    get_metrics_by_repository,
+    refresh_mttr_cache,
+)
 
 # Configuration
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -196,11 +203,40 @@ def internal_error(error):
         return "Internal server error", 500
 
 
+# Background worker for MTTR cache refresh
+def start_mttr_refresh_worker():
+    """Start background thread to periodically refresh MTTR cache.
+
+    Refresh interval is controlled by MTTR_REFRESH_INTERVAL environment variable.
+    Default: 300 seconds (5 minutes)
+    """
+    def worker():
+        # Get refresh interval from environment variable
+        interval = int(os.getenv('MTTR_REFRESH_INTERVAL', '300'))
+        logger.info(f"MTTR cache refresh worker starting (interval: {interval}s)")
+
+        # Initial delay to let Flask app fully start
+        time.sleep(5)
+
+        while True:
+            try:
+                refresh_mttr_cache()
+            except Exception as e:
+                logger.error(f"MTTR cache refresh failed: {e}", exc_info=True)
+                # Continue despite errors
+
+            # Wait for next refresh
+            time.sleep(interval)
+
+    # Start daemon thread (terminates when main thread exits)
+    thread = threading.Thread(target=worker, daemon=True, name="MTTRRefreshWorker")
+    thread.start()
+    logger.info("MTTR cache refresh worker started")
+
+
 # Main entry point
 def main():
     """Main entry point for Flask application."""
-    import os
-
     debug = os.getenv('FLASK_DEBUG', 'False').lower() == 'true'
     host = os.getenv('FLASK_HOST', '127.0.0.1')
     port = int(os.getenv('FLASK_PORT', '5000'))
@@ -208,6 +244,9 @@ def main():
     logger.info("Starting CIPette web dashboard...")
     logger.info(f"Access dashboard at: http://{host}:{port}")
     logger.info(f"Debug mode: {debug}")
+
+    # Start background worker for MTTR cache refresh
+    start_mttr_refresh_worker()
 
     app.run(debug=debug, host=host, port=port)
 

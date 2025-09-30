@@ -141,6 +141,23 @@ def initialize_database():
         GROUP BY r1.workflow_id
     ''')
 
+    # MTTR cache table for background job computation
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS mttr_cache (
+            workflow_id TEXT PRIMARY KEY,
+            mttr_seconds REAL,
+            sample_size INTEGER,
+            calculated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (workflow_id) REFERENCES workflows (id)
+        )
+    ''')
+
+    # Index for cache staleness checks
+    cursor.execute('''
+        CREATE INDEX IF NOT EXISTS idx_mttr_cache_calculated
+        ON mttr_cache (calculated_at)
+    ''')
+
     conn.commit()
     conn.close()
     logger.info("Database initialized successfully.")
@@ -354,24 +371,28 @@ def _build_metrics_query(repository=None, days=None):
         MAX(r.started_at) as last_run
     '''
 
-    # MTTR subquery with optional period filter
-    mttr_period_filter = "AND r1.started_at >= datetime('now', '-' || ? || ' days')" if days else ""
-    mttr_subquery = f'''
-        (
-            SELECT ROUND(AVG((julianday(r2.completed_at) - julianday(r1.completed_at)) * 86400), 2)
-            FROM runs r1
-            LEFT JOIN runs r2 ON
-                r2.workflow_id = r1.workflow_id AND
-                r2.completed_at > r1.completed_at AND
-                r2.conclusion = 'success' AND
-                r2.status = 'completed'
-            WHERE r1.workflow_id = w.id
-                AND r1.conclusion = 'failure'
-                AND r1.status = 'completed'
-                AND r2.completed_at IS NOT NULL
-                {mttr_period_filter}
-        ) as mttr_seconds
-    '''
+    # MTTR: Use cache for all-time, compute for period-filtered queries
+    if days:
+        # Period-filtered: Compute MTTR with subquery (slower but accurate)
+        mttr_select = '''
+            (
+                SELECT ROUND(AVG((julianday(r2.completed_at) - julianday(r1.completed_at)) * 86400), 2)
+                FROM runs r1
+                LEFT JOIN runs r2 ON
+                    r2.workflow_id = r1.workflow_id AND
+                    r2.completed_at > r1.completed_at AND
+                    r2.conclusion = 'success' AND
+                    r2.status = 'completed'
+                WHERE r1.workflow_id = w.id
+                    AND r1.conclusion = 'failure'
+                    AND r1.status = 'completed'
+                    AND r2.completed_at IS NOT NULL
+                    AND r1.started_at >= datetime('now', '-' || ? || ' days')
+            ) as mttr_seconds
+        '''
+    else:
+        # All-time: Use pre-computed cache (fast)
+        mttr_select = 'c.mttr_seconds'
 
     # Build WHERE conditions
     where_conditions = ["r.status = 'completed'"]
@@ -388,6 +409,17 @@ def _build_metrics_query(repository=None, days=None):
 
     where_clause = " AND ".join(where_conditions)
 
+    # Build JOIN clause (add mttr_cache for all-time queries)
+    if days:
+        # Period-filtered: No cache join needed
+        joins = 'LEFT JOIN runs r ON w.id = r.workflow_id'
+    else:
+        # All-time: Join with cache table
+        joins = '''
+            LEFT JOIN runs r ON w.id = r.workflow_id
+            LEFT JOIN mttr_cache c ON w.id = c.workflow_id
+        '''
+
     # Unified query for all cases
     query = f'''
         SELECT
@@ -395,9 +427,9 @@ def _build_metrics_query(repository=None, days=None):
             w.name as workflow_name,
             w.id as workflow_id,
             {metrics_select},
-            {mttr_subquery}
+            {mttr_select}
         FROM workflows w
-        LEFT JOIN runs r ON w.id = r.workflow_id
+        {joins}
         WHERE {where_clause}
         GROUP BY w.repository, w.id, w.name
         ORDER BY w.repository, w.name
@@ -544,6 +576,102 @@ def calculate_mttr(workflow_id=None, repository=None, days=None):
 
     conn.close()
     return round(total_seconds / count, 2) if count > 0 else None
+
+
+def refresh_mttr_cache():
+    """Refresh MTTR cache for all workflows (background job).
+
+    This function:
+    1. Retrieves all workflows from the database
+    2. Calculates MTTR for each workflow
+    3. Stores/updates results in mttr_cache table
+
+    Designed to be called by background worker thread.
+    """
+    logger.info("Starting MTTR cache refresh...")
+    start_time = time.time()
+
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    try:
+        # Get all workflows
+        cursor.execute('SELECT id FROM workflows')
+        workflows = cursor.fetchall()
+
+        success_count = 0
+        error_count = 0
+
+        for workflow in workflows:
+            workflow_id = workflow['id']
+
+            try:
+                # Calculate MTTR using existing function
+                mttr = calculate_mttr(workflow_id=workflow_id)
+
+                if mttr is not None:
+                    # Count sample size (number of failures)
+                    cursor.execute('''
+                        SELECT COUNT(*) as count
+                        FROM runs
+                        WHERE workflow_id = ?
+                            AND conclusion = 'failure'
+                            AND status = 'completed'
+                    ''', (workflow_id,))
+                    sample_size = cursor.fetchone()['count']
+
+                    # Insert or update cache
+                    cursor.execute('''
+                        INSERT INTO mttr_cache (workflow_id, mttr_seconds, sample_size, calculated_at)
+                        VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+                        ON CONFLICT(workflow_id) DO UPDATE SET
+                            mttr_seconds = excluded.mttr_seconds,
+                            sample_size = excluded.sample_size,
+                            calculated_at = excluded.calculated_at
+                    ''', (workflow_id, mttr, sample_size))
+                    success_count += 1
+                else:
+                    # No MTTR data (no failures or no recovery) - clear cache entry
+                    cursor.execute('DELETE FROM mttr_cache WHERE workflow_id = ?', (workflow_id,))
+
+            except Exception as e:
+                logger.error(f"Error calculating MTTR for workflow {workflow_id}: {e}")
+                error_count += 1
+                continue
+
+        conn.commit()
+        elapsed = time.time() - start_time
+        logger.info(f"MTTR cache refresh completed: {success_count} updated, {error_count} errors, {elapsed:.2f}s")
+
+    except Exception as e:
+        logger.error(f"MTTR cache refresh failed: {e}")
+        conn.rollback()
+        raise
+
+    finally:
+        conn.close()
+
+
+def clear_mttr_cache():
+    """Clear all MTTR cache entries.
+
+    Useful for:
+    - Manual cache invalidation
+    - Testing
+    - Forcing full recalculation
+    """
+    logger.info("Clearing MTTR cache...")
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute('DELETE FROM mttr_cache')
+        deleted_count = cursor.rowcount
+        conn.commit()
+        logger.info(f"MTTR cache cleared: {deleted_count} entries removed")
+
+    finally:
+        conn.close()
 
 
 if __name__ == '__main__':
