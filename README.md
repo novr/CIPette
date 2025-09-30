@@ -42,10 +42,17 @@ cp .env.example .env
 
 ```bash
 # Run collector
-uv run python -m cipette.collector
-
-# Or use the installed command
 uv run cipette-collect
+```
+
+### 4. Start Web Dashboard
+
+```bash
+# Start Flask web server
+uv run cipette-web
+
+# Access dashboard in your browser
+open http://localhost:5000
 ```
 
 ## Development
@@ -105,14 +112,21 @@ CIPette/
 Create a `.env` file with:
 
 ```bash
+# GitHub Configuration
 GITHUB_TOKEN=ghp_your_token_here
 TARGET_REPOSITORIES=owner/repo1,owner/repo2
+
+# Flask Configuration (optional)
+FLASK_DEBUG=True
+FLASK_HOST=127.0.0.1
+FLASK_PORT=5000
 ```
 
 ## Architecture
 
 **Tech Stack:**
 - Python 3.13+
+- Flask (web framework)
 - PyGithub (GitHub API client)
 - SQLite (data storage)
 - pytest (testing)
@@ -123,6 +137,14 @@ TARGET_REPOSITORIES=owner/repo1,owner/repo2
 1. `collector.py` fetches data from GitHub Actions API
 2. Data stored in SQLite via `database.py`
 3. Incremental updates tracked in `last_run.json`
+4. `app.py` serves web dashboard with metrics visualization
+
+**Features:**
+- 📊 Real-time metrics dashboard
+- 🔍 Filter by period (7/30/90 days) and repository
+- 📈 Success rate visualization with color coding
+- ⏱️ Average duration and MTTR calculation
+- 📱 Responsive design
 
 ## License
 
