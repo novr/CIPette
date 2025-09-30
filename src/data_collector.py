@@ -11,8 +11,8 @@ from github import (
     RateLimitExceededException,
 )
 
-from config import GITHUB_TOKEN, MAX_WORKFLOW_RUNS, TARGET_REPOSITORIES
-from database import initialize_database, insert_runs_batch, insert_workflow
+from src.config import GITHUB_TOKEN, MAX_WORKFLOW_RUNS, TARGET_REPOSITORIES
+from src.database import initialize_database, insert_runs_batch, insert_workflow
 
 # Configure logging
 logging.basicConfig(
@@ -107,7 +107,7 @@ class GitHubDataCollector:
 
         # Use a single database connection for all workflow operations
         # Repository-level transaction: all or nothing
-        from database import get_connection
+        from src.database import get_connection
 
         try:
             with get_connection() as conn:

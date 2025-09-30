@@ -1,13 +1,10 @@
 import os
 import sqlite3
-import sys
 import tempfile
 
 import pytest
 
-# Add src to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
-
+from src import config, database
 
 
 @pytest.fixture
@@ -17,16 +14,9 @@ def test_db():
     test_db_path = tempfile.mktemp(suffix='.db')
 
     # Temporarily override DATABASE_PATH
-    import config
     original_path = config.DATABASE_PATH
     config.DATABASE_PATH = test_db_path
-
-    # Reload database module with new path
-    import importlib
-
-    import database
     database.DATABASE_PATH = test_db_path
-    importlib.reload(database)
 
     # Initialize test database
     database.initialize_database()
@@ -62,7 +52,7 @@ def test_initialize_database(test_db):
 
 def test_insert_and_get_workflow(test_db):
     """Test workflow insertion and retrieval."""
-    import database
+    from src import database
     database.DATABASE_PATH = test_db
 
     # Insert workflow
@@ -78,7 +68,7 @@ def test_insert_and_get_workflow(test_db):
 
 def test_insert_and_get_runs(test_db):
     """Test run insertion and retrieval."""
-    import database
+    from src import database
     database.DATABASE_PATH = test_db
 
     # Insert workflow first
@@ -102,7 +92,7 @@ def test_insert_and_get_runs(test_db):
 
 def test_insert_runs_batch(test_db):
     """Test batch run insertion."""
-    import database
+    from src import database
     database.DATABASE_PATH = test_db
 
     # Insert workflow
@@ -124,7 +114,7 @@ def test_insert_runs_batch(test_db):
 
 def test_get_runs_with_filters(test_db):
     """Test run retrieval with various filters."""
-    import database
+    from src import database
     database.DATABASE_PATH = test_db
 
     # Setup test data
@@ -160,7 +150,7 @@ def test_get_runs_with_filters(test_db):
 
 def test_get_metrics_by_repository(test_db):
     """Test metrics calculation."""
-    import database
+    from src import database
     database.DATABASE_PATH = test_db
 
     # Setup test data
@@ -190,7 +180,7 @@ def test_get_metrics_by_repository(test_db):
 
 def test_calculate_mttr(test_db):
     """Test MTTR calculation."""
-    import database
+    from src import database
     database.DATABASE_PATH = test_db
 
     # Setup test data: failure followed by success
@@ -213,7 +203,7 @@ def test_calculate_mttr(test_db):
 
 def test_idempotency(test_db):
     """Test that reinserting same data doesn't create duplicates."""
-    import database
+    from src import database
     database.DATABASE_PATH = test_db
 
     # Insert workflow twice
@@ -245,7 +235,7 @@ def test_idempotency(test_db):
 
 def test_sql_injection_protection(test_db):
     """Test that SQL injection attempts are safely handled."""
-    import database
+    from src import database
     database.DATABASE_PATH = test_db
 
     database.insert_workflow('123', 'owner/repo', 'Test Workflow')

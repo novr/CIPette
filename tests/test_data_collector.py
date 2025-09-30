@@ -1,28 +1,23 @@
 import json
-import os
-import sys
 from datetime import datetime
 from unittest.mock import Mock, patch
 
 import pytest
 
-# Add src to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
-
-from data_collector import GitHubDataCollector
+from src.data_collector import GitHubDataCollector
 
 
 @pytest.fixture
 def mock_github():
     """Mock PyGithub Github object."""
-    with patch('data_collector.Github') as mock:
+    with patch('src.data_collector.Github') as mock:
         yield mock
 
 
 @pytest.fixture
 def collector():
     """Create a GitHubDataCollector instance with mocked Github."""
-    with patch('data_collector.Auth'), patch('data_collector.Github'):
+    with patch('src.data_collector.Auth'), patch('src.data_collector.Github'):
         collector = GitHubDataCollector()
         return collector
 
@@ -152,8 +147,8 @@ def test_collect_repository_data_success(collector):
     collector.github.get_repo.return_value = mock_repo
 
     # Mock database functions
-    with patch('data_collector.insert_workflow') as mock_insert_wf, \
-         patch('data_collector.insert_runs_batch') as mock_insert_runs:
+    with patch('src.data_collector.insert_workflow') as mock_insert_wf, \
+         patch('src.data_collector.insert_runs_batch') as mock_insert_runs:
 
         wf_count, run_count = collector.collect_repository_data('owner/repo')
 
@@ -175,15 +170,15 @@ def test_collect_repository_data_success(collector):
 
 def test_collect_all_data_no_token(collector):
     """Test behavior when GITHUB_TOKEN is not set."""
-    with patch('data_collector.GITHUB_TOKEN', None):
+    with patch('src.data_collector.GITHUB_TOKEN', None):
         # Should return early without error
         collector.collect_all_data()
 
 
 def test_collect_all_data_no_repositories(collector):
     """Test behavior when TARGET_REPOSITORIES is not set."""
-    with patch('data_collector.TARGET_REPOSITORIES', ''), \
-         patch('data_collector.initialize_database'):
+    with patch('src.data_collector.TARGET_REPOSITORIES', ''), \
+         patch('src.data_collector.initialize_database'):
         # Should return early without error
         collector.collect_all_data()
 
@@ -202,9 +197,9 @@ def test_collect_all_data_with_last_run(collector, tmp_path):
     collector.LAST_RUN_FILE = str(last_run_file)
 
     # Mock dependencies
-    with patch('data_collector.GITHUB_TOKEN', 'fake_token'), \
-         patch('data_collector.TARGET_REPOSITORIES', 'owner/repo'), \
-         patch('data_collector.initialize_database'), \
+    with patch('src.data_collector.GITHUB_TOKEN', 'fake_token'), \
+         patch('src.data_collector.TARGET_REPOSITORIES', 'owner/repo'), \
+         patch('src.data_collector.initialize_database'), \
          patch.object(collector, 'collect_repository_data', return_value=(1, 1)) as mock_collect:
 
         collector.collect_all_data()
