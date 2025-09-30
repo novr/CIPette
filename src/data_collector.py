@@ -98,6 +98,7 @@ class GitHubDataCollector:
         print(f"Found {workflow_count} workflows")
 
         # Use a single database connection for all workflow operations
+        # Repository-level transaction: all or nothing
         from database import get_connection
         conn = get_connection()
 
@@ -166,10 +167,18 @@ class GitHubDataCollector:
 
                 except GithubException as e:
                     print(f"    Error fetching runs for workflow {workflow_id}: {e}")
+                    # Continue with other workflows, don't break the transaction
                     continue
 
-            # Commit all workflow inserts
+            # Commit entire repository transaction
             conn.commit()
+            print(f"  Successfully committed {workflow_count} workflows and {total_runs} runs")
+
+        except Exception as e:
+            # Rollback entire repository transaction on any error
+            conn.rollback()
+            print(f"  Error: Transaction rolled back for repository {repo_name}: {e}")
+            raise  # Re-raise to notify caller
         finally:
             conn.close()
 
@@ -226,7 +235,7 @@ class GitHubDataCollector:
                 if last_run and isinstance(last_run.get('repositories'), dict):
                     since = last_run['repositories'].get(repo)
 
-                # Collect data
+                # Collect data (may raise exceptions)
                 start_time = datetime.now(UTC).isoformat()
                 wf_count, run_count = self.collect_repository_data(repo, since=since)
                 total_workflows += wf_count
@@ -234,22 +243,32 @@ class GitHubDataCollector:
 
                 # Record timestamp for this repo (ISO 8601 UTC)
                 repo_timestamps[repo] = start_time
+
             except BadCredentialsException:
                 print(f"Error: Invalid GitHub credentials for {repo}")
                 print("Please check your GITHUB_TOKEN")
                 break  # No point continuing with bad credentials
+
             except RateLimitExceededException as e:
                 print(f"Error: GitHub API rate limit exceeded for {repo}")
                 print(f"Rate limit resets at: {e}")
                 break  # Stop to avoid further rate limit violations
+
             except GithubException as e:
                 print(f"GitHub API error for {repo}: {e.status} - {e.data.get('message', 'Unknown error')}")
+                print(f"Skipping {repo}, continuing with next repository...")
                 continue  # Try next repository
+
             except OSError as e:
                 print(f"File system error for {repo}: {e}")
+                print(f"Skipping {repo}, continuing with next repository...")
                 continue  # Try next repository
+
             except Exception as e:
+                # Catch database errors and other unexpected errors
                 print(f"Unexpected error collecting data for {repo}: {type(e).__name__}: {e}")
+                print(f"Repository {repo} data collection failed and rolled back")
+                print("Continuing with next repository...")
                 continue  # Try next repository
 
         print("\nData collection completed!")

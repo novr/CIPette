@@ -160,6 +160,9 @@ def insert_runs_batch(runs_data, conn=None):
             (id, workflow_id, run_number, commit_sha, branch, event, status, conclusion,
              started_at, completed_at, duration_seconds, actor, url)
         conn: Optional database connection (for batch operations)
+
+    Raises:
+        sqlite3.Error: If database operation fails
     """
     if not runs_data:
         return
@@ -196,10 +199,11 @@ def insert_runs_batch(runs_data, conn=None):
 
         if should_close:
             conn.commit()
-    except Exception as e:
+    except Exception:
         if should_close:
             conn.rollback()
-        raise e
+        # Re-raise exception to notify caller
+        raise
     finally:
         if should_close:
             conn.close()
