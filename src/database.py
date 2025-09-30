@@ -273,18 +273,19 @@ def get_metrics_by_repository(repository=None, days=None):
     conn = get_connection()
     cursor = conn.cursor()
 
-    # Build query with optional filters
-    date_filter = ""
+    # Build query with parameterized filters
+    conditions = ["r.status = 'completed'"]
     params = []
 
     if days:
-        date_filter = f"AND r.started_at >= datetime('now', '-{int(days)} days')"
+        conditions.append("r.started_at >= datetime('now', '-' || ? || ' days')")
+        params.append(int(days))
 
     if repository:
-        repo_filter = "AND w.repository = ?"
+        conditions.append("w.repository = ?")
         params.append(repository)
-    else:
-        repo_filter = ""
+
+    where_clause = " AND ".join(conditions)
 
     query = f'''
         SELECT
@@ -304,9 +305,7 @@ def get_metrics_by_repository(repository=None, days=None):
             MAX(r.started_at) as last_run
         FROM workflows w
         LEFT JOIN runs r ON w.id = r.workflow_id
-        WHERE r.status = 'completed'
-        {date_filter}
-        {repo_filter}
+        WHERE {where_clause}
         GROUP BY w.repository, w.name, w.id
         ORDER BY w.repository, w.name
     '''
