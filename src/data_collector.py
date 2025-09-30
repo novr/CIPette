@@ -2,7 +2,13 @@ import json
 import os
 from datetime import UTC, datetime
 
-from github import Auth, Github, GithubException
+from github import (
+    Auth,
+    BadCredentialsException,
+    Github,
+    GithubException,
+    RateLimitExceededException,
+)
 
 from config import GITHUB_TOKEN, MAX_WORKFLOW_RUNS, TARGET_REPOSITORIES
 from database import initialize_database, insert_runs_batch, insert_workflow
@@ -234,8 +240,23 @@ class GitHubDataCollector:
 
                 # Record timestamp for this repo (ISO 8601 UTC)
                 repo_timestamps[repo] = start_time
+            except BadCredentialsException:
+                print(f"Error: Invalid GitHub credentials for {repo}")
+                print("Please check your GITHUB_TOKEN")
+                break  # No point continuing with bad credentials
+            except RateLimitExceededException as e:
+                print(f"Error: GitHub API rate limit exceeded for {repo}")
+                print(f"Rate limit resets at: {e}")
+                break  # Stop to avoid further rate limit violations
+            except GithubException as e:
+                print(f"GitHub API error for {repo}: {e.status} - {e.data.get('message', 'Unknown error')}")
+                continue  # Try next repository
+            except OSError as e:
+                print(f"File system error for {repo}: {e}")
+                continue  # Try next repository
             except Exception as e:
-                print(f"Error collecting data for {repo}: {e}")
+                print(f"Unexpected error collecting data for {repo}: {type(e).__name__}: {e}")
+                continue  # Try next repository
 
         print("\nData collection completed!")
         print(f"Total workflows collected: {total_workflows}")
