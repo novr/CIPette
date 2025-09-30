@@ -88,9 +88,22 @@ def initialize_database():
     print("Database initialized successfully.")
 
 
-def insert_workflow(workflow_id, repository, name, path=None, state=None):
-    """Insert or update a workflow record with idempotency."""
-    conn = get_connection()
+def insert_workflow(workflow_id, repository, name, path=None, state=None, conn=None):
+    """Insert or update a workflow record with idempotency.
+
+    Args:
+        workflow_id: Workflow ID
+        repository: Repository name
+        name: Workflow name
+        path: Workflow file path
+        state: Workflow state
+        conn: Optional database connection (for batch operations)
+    """
+    should_close = False
+    if conn is None:
+        conn = get_connection()
+        should_close = True
+
     cursor = conn.cursor()
 
     cursor.execute('''
@@ -103,8 +116,9 @@ def insert_workflow(workflow_id, repository, name, path=None, state=None):
             state = excluded.state
     ''', (workflow_id, repository, name, path, state))
 
-    conn.commit()
-    conn.close()
+    if should_close:
+        conn.commit()
+        conn.close()
 
 
 def insert_run(run_id, workflow_id, run_number, commit_sha, branch, event, status, conclusion,
@@ -322,7 +336,7 @@ def get_metrics_by_repository(repository=None, days=None):
 def calculate_mttr(workflow_id=None, repository=None, days=None):
     """Calculate Mean Time To Recovery (MTTR).
 
-    MTTR = Average time from a failure to the next success.
+    MTTR = Average time from a failure completion to the next success completion.
 
     Args:
         workflow_id: Filter by workflow ID
@@ -335,7 +349,7 @@ def calculate_mttr(workflow_id=None, repository=None, days=None):
     conn = get_connection()
     cursor = conn.cursor()
 
-    filters = ["r1.conclusion IN ('success', 'failure')"]
+    filters = ["r1.conclusion IN ('success', 'failure')", "r1.status = 'completed'", "r1.completed_at IS NOT NULL"]
     params = []
 
     if workflow_id:
@@ -347,7 +361,8 @@ def calculate_mttr(workflow_id=None, repository=None, days=None):
         params.append(repository)
 
     if days:
-        filters.append(f"r1.started_at >= datetime('now', '-{int(days)} days')")
+        filters.append("r1.completed_at >= datetime('now', '-' || ? || ' days')")
+        params.append(int(days))
 
     where_clause = " AND ".join(filters)
 
@@ -360,15 +375,16 @@ def calculate_mttr(workflow_id=None, repository=None, days=None):
     query = f'''
         SELECT
             r1.id,
-            r1.started_at as failure_time,
-            MIN(r2.started_at) as recovery_time
+            r1.completed_at as failure_time,
+            MIN(r2.completed_at) as recovery_time
         {from_clause}
         LEFT JOIN runs r2 ON
             r2.workflow_id = r1.workflow_id AND
-            r2.started_at > r1.started_at AND
-            r2.conclusion = 'success'
+            r2.completed_at > r1.completed_at AND
+            r2.conclusion = 'success' AND
+            r2.status = 'completed'
         WHERE {where_clause} AND r1.conclusion = 'failure'
-        GROUP BY r1.id, r1.started_at
+        GROUP BY r1.id, r1.completed_at
         HAVING recovery_time IS NOT NULL
     '''
 

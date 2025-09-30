@@ -207,8 +207,8 @@ def test_calculate_mttr(test_db):
     # Calculate MTTR
     mttr = database.calculate_mttr(repository='owner/repo')
 
-    # MTTR should be 10 minutes = 600 seconds
-    assert mttr == 600.0
+    # MTTR should be from failure completed (10:03) to success completed (10:15) = 12 minutes = 720 seconds
+    assert mttr == 720.0
 
 
 def test_idempotency(test_db):

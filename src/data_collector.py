@@ -80,68 +80,78 @@ class GitHubDataCollector:
         total_runs = 0
         print(f"Found {workflow_count} workflows")
 
-        for workflow in workflows:
-            workflow_id = str(workflow.id)
-            workflow_name = workflow.name
-            workflow_path = workflow.path
-            workflow_state = workflow.state
+        # Use a single database connection for all workflow operations
+        from database import get_connection
+        conn = get_connection()
 
-            print(f"  Processing workflow: {workflow_name} (ID: {workflow_id})")
+        try:
+            for workflow in workflows:
+                workflow_id = str(workflow.id)
+                workflow_name = workflow.name
+                workflow_path = workflow.path
+                workflow_state = workflow.state
 
-            # Save workflow to database
-            insert_workflow(workflow_id, repo_name, workflow_name, workflow_path, workflow_state)
+                print(f"  Processing workflow: {workflow_name} (ID: {workflow_id})")
 
-            # Fetch workflow runs
-            try:
-                # Get runs with optional time filter
-                if since:
-                    runs_paginated = workflow.get_runs(created=f'>={since}')
-                else:
-                    runs_paginated = workflow.get_runs()
+                # Save workflow to database using shared connection
+                insert_workflow(workflow_id, repo_name, workflow_name, workflow_path, workflow_state, conn=conn)
 
-                runs = list(runs_paginated[:MAX_WORKFLOW_RUNS])
-                print(f"    Found {len(runs)} runs")
+                # Fetch workflow runs
+                try:
+                    # Get runs with optional time filter
+                    if since:
+                        runs_paginated = workflow.get_runs(created=f'>={since}')
+                    else:
+                        runs_paginated = workflow.get_runs()
 
-                # Prepare batch data
-                runs_data = []
-                for run in runs:
-                    run_id = str(run.id)
-                    run_number = run.run_number
-                    commit_sha = run.head_sha
-                    branch = run.head_branch
-                    event = run.event
-                    status = run.status
-                    conclusion = run.conclusion
+                    runs = list(runs_paginated[:MAX_WORKFLOW_RUNS])
+                    print(f"    Found {len(runs)} runs")
 
-                    # Parse timestamps
-                    started_at = self.parse_datetime(run.run_started_at or run.created_at)
-                    completed_at = self.parse_datetime(run.updated_at if run.status == 'completed' else None)
+                    # Prepare batch data
+                    runs_data = []
+                    for run in runs:
+                        run_id = str(run.id)
+                        run_number = run.run_number
+                        commit_sha = run.head_sha
+                        branch = run.head_branch
+                        event = run.event
+                        status = run.status
+                        conclusion = run.conclusion
 
-                    # Calculate duration in seconds
-                    duration_seconds = None
-                    if run.run_started_at and run.updated_at and run.status == 'completed':
-                        duration = run.updated_at - run.run_started_at
-                        duration_seconds = int(duration.total_seconds())
+                        # Parse timestamps
+                        started_at = self.parse_datetime(run.run_started_at or run.created_at)
+                        completed_at = self.parse_datetime(run.updated_at if run.status == 'completed' else None)
 
-                    # Get actor
-                    actor = run.actor.login if run.actor else None
+                        # Calculate duration in seconds
+                        duration_seconds = None
+                        if run.run_started_at and run.updated_at and run.status == 'completed':
+                            duration = run.updated_at - run.run_started_at
+                            duration_seconds = int(duration.total_seconds())
 
-                    # Get URL
-                    url = run.html_url
+                        # Get actor
+                        actor = run.actor.login if run.actor else None
 
-                    runs_data.append((
-                        run_id, workflow_id, run_number, commit_sha, branch, event,
-                        status, conclusion, started_at, completed_at, duration_seconds, actor, url
-                    ))
+                        # Get URL
+                        url = run.html_url
 
-                # Batch insert all runs
-                insert_runs_batch(runs_data)
-                total_runs += len(runs)
-                print(f"    Saved {len(runs)} runs to database")
+                        runs_data.append((
+                            run_id, workflow_id, run_number, commit_sha, branch, event,
+                            status, conclusion, started_at, completed_at, duration_seconds, actor, url
+                        ))
 
-            except GithubException as e:
-                print(f"    Error fetching runs for workflow {workflow_id}: {e}")
-                continue
+                    # Batch insert all runs
+                    insert_runs_batch(runs_data)
+                    total_runs += len(runs)
+                    print(f"    Saved {len(runs)} runs to database")
+
+                except GithubException as e:
+                    print(f"    Error fetching runs for workflow {workflow_id}: {e}")
+                    continue
+
+            # Commit all workflow inserts
+            conn.commit()
+        finally:
+            conn.close()
 
         return workflow_count, total_runs
 
