@@ -50,10 +50,8 @@ def test_get_last_run_info_exists(collector, tmp_path):
     """Test reading last run info from existing file."""
     last_run_file = tmp_path / 'last_run.json'
     test_data = {
-        'timestamp': '2025-01-01 10:00:00',
-        'repositories': {'owner/repo': '2025-01-01 10:00:00'},
-        'workflow_count': 5,
-        'run_count': 10
+        'timestamp': '2025-01-01T10:00:00+00:00',
+        'repositories': {'owner/repo': '2025-01-01T10:00:00+00:00'},
     }
 
     with open(last_run_file, 'w') as f:
@@ -63,8 +61,8 @@ def test_get_last_run_info_exists(collector, tmp_path):
     result = collector.get_last_run_info()
 
     assert result is not None
-    assert result['workflow_count'] == 5
-    assert result['run_count'] == 10
+    assert result['repositories'] == {'owner/repo': '2025-01-01T10:00:00+00:00'}
+    assert result['timestamp'] == '2025-01-01T10:00:00+00:00'
 
 
 def test_save_last_run_info(collector, tmp_path):
@@ -72,8 +70,8 @@ def test_save_last_run_info(collector, tmp_path):
     last_run_file = tmp_path / 'last_run.json'
     collector.LAST_RUN_FILE = str(last_run_file)
 
-    repo_timestamps = {'owner/repo': '2025-01-01 10:00:00'}
-    collector.save_last_run_info(repo_timestamps, 5, 10)
+    repo_timestamps = {'owner/repo': '2025-01-01T10:00:00+00:00'}
+    collector.save_last_run_info(repo_timestamps)
 
     assert last_run_file.exists()
 
@@ -81,8 +79,6 @@ def test_save_last_run_info(collector, tmp_path):
         data = json.load(f)
 
     assert data['repositories'] == repo_timestamps
-    assert data['workflow_count'] == 5
-    assert data['run_count'] == 10
     assert 'timestamp' in data
 
 
@@ -192,10 +188,8 @@ def test_collect_all_data_with_last_run(collector, tmp_path):
     """Test data collection with previous run information."""
     last_run_file = tmp_path / 'last_run.json'
     test_data = {
-        'timestamp': '2025-01-01 09:00:00',
-        'repositories': {'owner/repo': '2025-01-01 09:00:00'},
-        'workflow_count': 1,
-        'run_count': 1
+        'timestamp': '2025-01-01T09:00:00+00:00',
+        'repositories': {'owner/repo': '2025-01-01T09:00:00+00:00'},
     }
 
     with open(last_run_file, 'w') as f:
@@ -214,7 +208,7 @@ def test_collect_all_data_with_last_run(collector, tmp_path):
         # Verify collect_repository_data was called with since parameter
         mock_collect.assert_called_once()
         call_args = mock_collect.call_args
-        assert call_args[1]['since'] == '2025-01-01 09:00:00'
+        assert call_args[1]['since'] == '2025-01-01T09:00:00+00:00'
 
 
 def test_duration_calculation(collector):

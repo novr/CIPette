@@ -47,19 +47,15 @@ class GitHubDataCollector:
             print(f"Warning: Could not read last run file: {e}")
             return None
 
-    def save_last_run_info(self, repo_timestamps, workflow_count, run_count):
+    def save_last_run_info(self, repo_timestamps):
         """Save last run information to file.
 
         Args:
             repo_timestamps: Dict of {repo_name: ISO 8601 UTC timestamp}
-            workflow_count: Total workflows collected
-            run_count: Total runs collected
         """
         last_run_info = {
             'timestamp': datetime.now(UTC).isoformat(),
             'repositories': repo_timestamps,
-            'workflow_count': workflow_count,
-            'run_count': run_count
         }
 
         try:
@@ -205,8 +201,6 @@ class GitHubDataCollector:
             else:
                 # Old format compatibility
                 print(f"  Repositories: {', '.join(repos_info)}")
-            print(f"  Workflows: {last_run['workflow_count']}")
-            print(f"  Runs: {last_run['run_count']}")
             print("=" * 60)
 
         # Initialize database
@@ -263,7 +257,7 @@ class GitHubDataCollector:
         print(f"Total runs collected: {total_runs}")
 
         # Save this run info
-        self.save_last_run_info(repo_timestamps, total_workflows, total_runs)
+        self.save_last_run_info(repo_timestamps)
 
 
 if __name__ == '__main__':
