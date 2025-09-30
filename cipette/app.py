@@ -4,11 +4,15 @@ import logging
 import sqlite3
 from functools import lru_cache
 from pathlib import Path
-from typing import Optional
 
 from flask import Flask, render_template, request
 
-from cipette.database import calculate_mttr, get_connection, get_metrics_by_repository
+from cipette.database import (
+    calculate_mttr,
+    get_cached_metrics,
+    get_connection,
+    get_metrics_by_repository,
+)
 
 # Configuration
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -32,7 +36,7 @@ logger = logging.getLogger(__name__)
 
 
 # Template filters
-def _format_time(seconds: Optional[float], units: list[tuple[str, int]]) -> str:
+def _format_time(seconds: float | None, units: list[tuple[str, int]]) -> str:
     """Generic time formatter.
 
     Args:
@@ -58,7 +62,7 @@ def _format_time(seconds: Optional[float], units: list[tuple[str, int]]) -> str:
 
 
 @app.template_filter('duration')
-def format_duration(seconds: Optional[float]) -> str:
+def format_duration(seconds: float | None) -> str:
     """Format duration in seconds to human-readable format.
 
     Examples:
@@ -73,7 +77,7 @@ def format_duration(seconds: Optional[float]) -> str:
 
 
 @app.template_filter('rate_class')
-def rate_class(rate: Optional[float]) -> str:
+def rate_class(rate: float | None) -> str:
     """Classify success rate into CSS class.
 
     Args:
@@ -93,7 +97,7 @@ def rate_class(rate: Optional[float]) -> str:
 
 
 @app.template_filter('mttr')
-def format_mttr(seconds: Optional[float]) -> str:
+def format_mttr(seconds: float | None) -> str:
     """Format MTTR in seconds to human-readable format.
 
     Examples:
@@ -138,26 +142,30 @@ def dashboard():
     Query Parameters:
         days (int, optional): Filter runs from last N days
         repository (str, optional): Filter by repository name
-        show_mttr (bool, optional): Calculate MTTR (expensive)
 
     Returns:
         Rendered dashboard template with metrics
     """
     days = request.args.get('days', type=int)
     repository = request.args.get('repository', type=str)
-    show_mttr = request.args.get('show_mttr', 'false').lower() == 'true'
 
-    logger.info(f"Dashboard accessed: days={days}, repository={repository}, show_mttr={show_mttr}")
+    logger.info(f"Dashboard accessed: days={days}, repository={repository}")
 
     try:
         # Get metrics from database
         metrics = get_metrics_by_repository(repository=repository, days=days)
         repositories = get_available_repositories()
 
-        # MTTR calculation is expensive, make it optional
+        # MTTR from cache (fast)
         mttr = None
-        if show_mttr and metrics:
-            mttr = calculate_mttr(repository=repository, days=days)
+        if metrics:
+            # Get MTTR from cache (repository-level, workflow_id=None)
+            cached = get_cached_metrics(repository=repository, workflow_id=None, period_days=days)
+            if cached and len(cached) > 0:
+                mttr = cached[0]['mttr_seconds']
+                logger.info(f"Using cached MTTR: {mttr}")
+            else:
+                logger.info("MTTR cache not available")
 
         logger.info(f"Loaded {len(metrics)} metrics, MTTR={mttr}")
 
@@ -167,8 +175,7 @@ def dashboard():
             repositories=repositories,
             selected_days=days,
             selected_repository=repository,
-            mttr=mttr,
-            show_mttr=show_mttr
+            mttr=mttr
         )
 
     except sqlite3.OperationalError:

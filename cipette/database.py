@@ -95,6 +95,30 @@ def initialize_database():
         ON runs (event)
     ''')
 
+    # Metrics cache table for pre-calculated metrics (MTTR, etc.)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS metrics_cache (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            repository TEXT NOT NULL,
+            workflow_id TEXT,
+            period_days INTEGER,
+            calculated_at DATETIME NOT NULL,
+            mttr_seconds REAL,
+            success_rate REAL,
+            avg_duration_seconds REAL,
+            total_runs INTEGER,
+            success_count INTEGER,
+            failure_count INTEGER,
+            UNIQUE(repository, workflow_id, period_days)
+        )
+    ''')
+
+    # Index for fast lookups
+    cursor.execute('''
+        CREATE INDEX IF NOT EXISTS idx_metrics_cache_lookup
+        ON metrics_cache (repository, workflow_id, period_days)
+    ''')
+
     conn.commit()
     conn.close()
     logger.info("Database initialized successfully.")
@@ -430,6 +454,220 @@ def calculate_mttr(workflow_id=None, repository=None, days=None):
 
     conn.close()
     return round(total_seconds / count, 2) if count > 0 else None
+
+
+def save_metrics_cache(repository, workflow_id, period_days, mttr_seconds, success_rate,
+                       avg_duration_seconds, total_runs, success_count, failure_count):
+    """Save or update metrics cache.
+
+    Args:
+        repository: Repository name
+        workflow_id: Workflow ID (None for repository-level metrics)
+        period_days: Number of days (None for all time)
+        mttr_seconds: Mean Time To Recovery in seconds
+        success_rate: Success rate percentage
+        avg_duration_seconds: Average duration in seconds
+        total_runs: Total number of runs
+        success_count: Number of successful runs
+        failure_count: Number of failed runs
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    # SQLite's ON CONFLICT doesn't work well with NULL in UNIQUE constraints
+    # Use explicit DELETE + INSERT instead
+    # Delete existing record with same keys (handling NULL properly)
+    if workflow_id is None and period_days is None:
+        cursor.execute('''
+            DELETE FROM metrics_cache
+            WHERE repository = ? AND workflow_id IS NULL AND period_days IS NULL
+        ''', (repository,))
+    elif workflow_id is None:
+        cursor.execute('''
+            DELETE FROM metrics_cache
+            WHERE repository = ? AND workflow_id IS NULL AND period_days = ?
+        ''', (repository, period_days))
+    elif period_days is None:
+        cursor.execute('''
+            DELETE FROM metrics_cache
+            WHERE repository = ? AND workflow_id = ? AND period_days IS NULL
+        ''', (repository, workflow_id))
+    else:
+        cursor.execute('''
+            DELETE FROM metrics_cache
+            WHERE repository = ? AND workflow_id = ? AND period_days = ?
+        ''', (repository, workflow_id, period_days))
+
+    # Insert new record
+    cursor.execute('''
+        INSERT INTO metrics_cache
+        (repository, workflow_id, period_days, calculated_at,
+         mttr_seconds, success_rate, avg_duration_seconds,
+         total_runs, success_count, failure_count)
+        VALUES (?, ?, ?, datetime('now'), ?, ?, ?, ?, ?, ?)
+    ''', (repository, workflow_id, period_days, mttr_seconds, success_rate,
+          avg_duration_seconds, total_runs, success_count, failure_count))
+
+    conn.commit()
+    conn.close()
+
+
+# Sentinel value to distinguish between "not provided" and "None"
+_UNSET = object()
+
+
+def get_cached_metrics(repository=None, workflow_id=_UNSET, period_days=_UNSET):
+    """Retrieve cached metrics.
+
+    Args:
+        repository: Repository name (None for all repositories)
+        workflow_id: Workflow ID, or None for repository-level metrics, or omit to get all
+        period_days: Number of days, or None for all time, or omit to get all periods
+
+    Returns:
+        List of cached metrics dictionaries, or None if not found
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    conditions = []
+    params = []
+
+    if repository:
+        conditions.append('repository = ?')
+        params.append(repository)
+
+    # Only filter by workflow_id if explicitly provided (including None)
+    if workflow_id is not _UNSET:
+        if workflow_id is None:
+            conditions.append('workflow_id IS NULL')
+        else:
+            conditions.append('workflow_id = ?')
+            params.append(workflow_id)
+
+    # Only filter by period_days if explicitly provided (including None)
+    if period_days is not _UNSET:
+        if period_days is None:
+            conditions.append('period_days IS NULL')
+        else:
+            conditions.append('period_days = ?')
+            params.append(period_days)
+
+    query = 'SELECT * FROM metrics_cache'
+    if conditions:
+        query += ' WHERE ' + ' AND '.join(conditions)
+    query += ' ORDER BY repository, workflow_id, period_days'
+
+    cursor.execute(query, params)
+    rows = cursor.fetchall()
+
+    metrics = []
+    for row in rows:
+        metrics.append({
+            'repository': row['repository'],
+            'workflow_id': row['workflow_id'],
+            'period_days': row['period_days'],
+            'calculated_at': row['calculated_at'],
+            'mttr_seconds': row['mttr_seconds'],
+            'success_rate': row['success_rate'],
+            'avg_duration_seconds': row['avg_duration_seconds'],
+            'total_runs': row['total_runs'],
+            'success_count': row['success_count'],
+            'failure_count': row['failure_count']
+        })
+
+    conn.close()
+    return metrics if metrics else None
+
+
+def calculate_and_cache_all_metrics():
+    """Calculate and cache metrics for all repositories and time periods.
+
+    This function calculates metrics for:
+    - All time (period_days=None)
+    - Last 7 days (period_days=7)
+    - Last 30 days (period_days=30)
+    - Last 90 days (period_days=90)
+
+    Both repository-level and workflow-level metrics are calculated.
+    """
+    logger.info("Starting metrics calculation and caching...")
+
+    # Get all repositories
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT DISTINCT repository FROM workflows')
+    repositories = [row['repository'] for row in cursor.fetchall()]
+    conn.close()
+
+    periods = [None, 7, 30, 90]
+    total_cached = 0
+
+    for repo in repositories:
+        logger.info(f"Processing repository: {repo}")
+
+        for period in periods:
+            period_label = f"{period} days" if period else "all time"
+
+            # Repository-level metrics (aggregated across all workflows)
+            metrics_list = get_metrics_by_repository(repository=repo, days=period)
+            if metrics_list:
+                # Aggregate metrics across workflows
+                total_runs = sum(m['total_runs'] for m in metrics_list)
+                success_count = sum(m['success_count'] for m in metrics_list)
+                failure_count = sum(m['failure_count'] for m in metrics_list)
+
+                # Calculate success rate
+                if success_count + failure_count > 0:
+                    success_rate = round((success_count / (success_count + failure_count)) * 100, 2)
+                else:
+                    success_rate = None
+
+                # Calculate average duration (weighted by number of runs)
+                total_duration = sum(m['avg_duration_seconds'] * m['total_runs'] for m in metrics_list
+                                     if m['avg_duration_seconds'] is not None)
+                avg_duration = round(total_duration / total_runs, 2) if total_runs > 0 else None
+
+                # Calculate MTTR for repository
+                mttr = calculate_mttr(repository=repo, days=period)
+
+                # Save repository-level cache
+                save_metrics_cache(
+                    repository=repo,
+                    workflow_id=None,
+                    period_days=period,
+                    mttr_seconds=mttr,
+                    success_rate=success_rate,
+                    avg_duration_seconds=avg_duration,
+                    total_runs=total_runs,
+                    success_count=success_count,
+                    failure_count=failure_count
+                )
+                total_cached += 1
+                logger.info(f"  Cached repository-level metrics for {period_label}")
+
+                # Workflow-level metrics
+                for workflow_metrics in metrics_list:
+                    workflow_id = workflow_metrics['workflow_id']
+                    mttr_wf = calculate_mttr(workflow_id=workflow_id, days=period)
+
+                    save_metrics_cache(
+                        repository=repo,
+                        workflow_id=workflow_id,
+                        period_days=period,
+                        mttr_seconds=mttr_wf,
+                        success_rate=workflow_metrics['success_rate'],
+                        avg_duration_seconds=workflow_metrics['avg_duration_seconds'],
+                        total_runs=workflow_metrics['total_runs'],
+                        success_count=workflow_metrics['success_count'],
+                        failure_count=workflow_metrics['failure_count']
+                    )
+                    total_cached += 1
+
+                logger.info(f"  Cached {len(metrics_list)} workflow-level metrics for {period_label}")
+
+    logger.info(f"Metrics caching complete. Total entries cached: {total_cached}")
+    return total_cached
 
 
 if __name__ == '__main__':

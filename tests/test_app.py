@@ -1,7 +1,11 @@
 """Tests for Flask web application."""
 
+import os
+import tempfile
+
 import pytest
 
+from cipette import config, database
 from cipette.app import app, format_duration, format_mttr, rate_class
 
 
@@ -63,10 +67,28 @@ class TestTemplateFilters:
 # Integration Tests for Flask Routes
 @pytest.fixture
 def client():
-    """Create Flask test client."""
+    """Create Flask test client with test database."""
+    # Use a temporary database for testing
+    test_db_path = tempfile.mktemp(suffix='.db')
+
+    # Temporarily override DATABASE_PATH
+    original_path = config.DATABASE_PATH
+    config.DATABASE_PATH = test_db_path
+    database.DATABASE_PATH = test_db_path
+
+    # Initialize test database
+    database.initialize_database()
+
+    # Configure Flask for testing
     app.config['TESTING'] = True
-    with app.test_client() as client:
-        yield client
+
+    yield app.test_client()
+
+    # Cleanup
+    config.DATABASE_PATH = original_path
+    database.DATABASE_PATH = original_path
+    if os.path.exists(test_db_path):
+        os.remove(test_db_path)
 
 
 class TestFlaskRoutes:
@@ -93,9 +115,10 @@ class TestFlaskRoutes:
         assert response.status_code in [200, 500]  # 500 if DB not found
 
     def test_dashboard_with_mttr(self, client):
-        """Test dashboard with MTTR calculation."""
-        response = client.get('/?show_mttr=true')
-        assert response.status_code in [200, 500]  # 500 if DB not found
+        """Test dashboard with MTTR from cache."""
+        response = client.get('/')
+        assert response.status_code == 200
+        # MTTR should be available if cache is populated (or None if no data)
 
     def test_404_error_page(self, client):
         """Test 404 error handling."""
