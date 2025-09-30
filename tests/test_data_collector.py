@@ -189,7 +189,8 @@ def test_collect_all_data_with_last_run(collector, tmp_path):
     collector.LAST_RUN_FILE = str(last_run_file)
 
     # Mock dependencies
-    with patch('data_collector.TARGET_REPOSITORIES', 'owner/repo'), \
+    with patch('data_collector.GITHUB_TOKEN', 'fake_token'), \
+         patch('data_collector.TARGET_REPOSITORIES', 'owner/repo'), \
          patch('data_collector.initialize_database'), \
          patch.object(collector, 'collect_repository_data', return_value=(1, 1)) as mock_collect:
 
