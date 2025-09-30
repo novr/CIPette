@@ -115,11 +115,14 @@ class GitHubDataCollector:
                 try:
                     # Get runs with optional time filter
                     if since:
+                        # For incremental updates, fetch all new runs without limit
                         runs_paginated = workflow.get_runs(created=f'>={since}')
+                        runs = list(runs_paginated)
                     else:
+                        # For full fetch, limit to MAX_WORKFLOW_RUNS
                         runs_paginated = workflow.get_runs()
+                        runs = list(runs_paginated[:MAX_WORKFLOW_RUNS])
 
-                    runs = list(runs_paginated[:MAX_WORKFLOW_RUNS])
                     print(f"    Found {len(runs)} runs")
 
                     # Prepare batch data
