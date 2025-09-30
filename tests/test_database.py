@@ -4,7 +4,7 @@ import tempfile
 
 import pytest
 
-from src import config, database
+from cipette import config, database
 
 
 @pytest.fixture
@@ -52,7 +52,7 @@ def test_initialize_database(test_db):
 
 def test_insert_and_get_workflow(test_db):
     """Test workflow insertion and retrieval."""
-    from src import database
+    from cipette import database
     database.DATABASE_PATH = test_db
 
     # Insert workflow
@@ -68,7 +68,7 @@ def test_insert_and_get_workflow(test_db):
 
 def test_insert_and_get_runs(test_db):
     """Test run insertion and retrieval."""
-    from src import database
+    from cipette import database
     database.DATABASE_PATH = test_db
 
     # Insert workflow first
@@ -92,7 +92,7 @@ def test_insert_and_get_runs(test_db):
 
 def test_insert_runs_batch(test_db):
     """Test batch run insertion."""
-    from src import database
+    from cipette import database
     database.DATABASE_PATH = test_db
 
     # Insert workflow
@@ -114,7 +114,7 @@ def test_insert_runs_batch(test_db):
 
 def test_get_runs_with_filters(test_db):
     """Test run retrieval with various filters."""
-    from src import database
+    from cipette import database
     database.DATABASE_PATH = test_db
 
     # Setup test data
@@ -150,7 +150,7 @@ def test_get_runs_with_filters(test_db):
 
 def test_get_metrics_by_repository(test_db):
     """Test metrics calculation."""
-    from src import database
+    from cipette import database
     database.DATABASE_PATH = test_db
 
     # Setup test data
@@ -180,7 +180,7 @@ def test_get_metrics_by_repository(test_db):
 
 def test_calculate_mttr(test_db):
     """Test MTTR calculation."""
-    from src import database
+    from cipette import database
     database.DATABASE_PATH = test_db
 
     # Setup test data: failure followed by success
@@ -203,7 +203,7 @@ def test_calculate_mttr(test_db):
 
 def test_idempotency(test_db):
     """Test that reinserting same data doesn't create duplicates."""
-    from src import database
+    from cipette import database
     database.DATABASE_PATH = test_db
 
     # Insert workflow twice
@@ -235,7 +235,7 @@ def test_idempotency(test_db):
 
 def test_sql_injection_protection(test_db):
     """Test that SQL injection attempts are safely handled."""
-    from src import database
+    from cipette import database
     database.DATABASE_PATH = test_db
 
     database.insert_workflow('123', 'owner/repo', 'Test Workflow')

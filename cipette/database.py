@@ -2,7 +2,7 @@ import logging
 import sqlite3
 from datetime import datetime
 
-from src.config import DATABASE_PATH
+from cipette.config import DATABASE_PATH
 
 logger = logging.getLogger(__name__)
 

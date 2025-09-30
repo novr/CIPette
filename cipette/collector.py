@@ -11,8 +11,8 @@ from github import (
     RateLimitExceededException,
 )
 
-from src.config import GITHUB_TOKEN, MAX_WORKFLOW_RUNS, TARGET_REPOSITORIES
-from src.database import initialize_database, insert_runs_batch, insert_workflow
+from cipette.config import GITHUB_TOKEN, MAX_WORKFLOW_RUNS, TARGET_REPOSITORIES
+from cipette.database import initialize_database, insert_runs_batch, insert_workflow
 
 # Configure logging
 logging.basicConfig(
@@ -107,7 +107,7 @@ class GitHubDataCollector:
 
         # Use a single database connection for all workflow operations
         # Repository-level transaction: all or nothing
-        from src.database import get_connection
+        from cipette.database import get_connection
 
         try:
             with get_connection() as conn:
@@ -284,6 +284,11 @@ class GitHubDataCollector:
         self.save_last_run_info(repo_timestamps)
 
 
-if __name__ == '__main__':
+def main():
+    """Main entry point for the data collector."""
     collector = GitHubDataCollector()
     collector.collect_all_data()
+
+
+if __name__ == '__main__':
+    main()

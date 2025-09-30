@@ -9,9 +9,9 @@ from pathlib import Path
 
 import pytest
 
-from src.config import GITHUB_TOKEN, TARGET_REPOSITORIES
-from src.data_collector import GitHubDataCollector
-from src.database import get_connection, initialize_database
+from cipette.collector import GitHubDataCollector
+from cipette.config import GITHUB_TOKEN, TARGET_REPOSITORIES
+from cipette.database import get_connection, initialize_database
 
 
 @pytest.fixture
@@ -21,7 +21,7 @@ def temp_db():
         db_path = f.name
 
     # Override DATABASE_PATH
-    from src import config, database
+    from cipette import config, database
 
     original_path = config.DATABASE_PATH
     config.DATABASE_PATH = db_path
