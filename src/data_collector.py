@@ -17,6 +17,18 @@ class GitHubDataCollector:
         auth = Auth.Token(GITHUB_TOKEN)
         self.github = Github(auth=auth)
 
+    def check_rate_limit(self):
+        """Check and display current GitHub API rate limit status."""
+        rate_limit = self.github.get_rate_limit()
+        core = rate_limit.core
+        print(f"  API Rate Limit: {core.remaining}/{core.limit} (resets at {core.reset})")
+
+        # Warn if running low
+        if core.remaining < 100:
+            print(f"  WARNING: Only {core.remaining} API calls remaining!")
+
+        return core.remaining
+
     def get_last_run_info(self):
         """Read last run information from file."""
         if not os.path.exists(self.LAST_RUN_FILE):
@@ -67,6 +79,9 @@ class GitHubDataCollector:
         print(f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         if since:
             print(f"Incremental update since: {since}")
+
+        # Check rate limit before starting
+        self.check_rate_limit()
 
         try:
             repo = self.github.get_repo(repo_name)

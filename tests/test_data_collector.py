@@ -92,6 +92,14 @@ def test_collect_repository_data_github_exception(collector):
 
     mock_github = Mock()
     mock_github.get_repo.side_effect = GithubException(404, {'message': 'Not Found'})
+
+    # Mock rate limit
+    mock_rate_limit = Mock()
+    mock_rate_limit.core.remaining = 5000
+    mock_rate_limit.core.limit = 5000
+    mock_rate_limit.core.reset = '2025-01-01 12:00:00'
+    mock_github.get_rate_limit.return_value = mock_rate_limit
+
     collector.github = mock_github
 
     # Should return 0, 0 on error
@@ -102,6 +110,13 @@ def test_collect_repository_data_github_exception(collector):
 
 def test_collect_repository_data_success(collector):
     """Test successful data collection."""
+    # Mock rate limit
+    mock_rate_limit = Mock()
+    mock_rate_limit.core.remaining = 5000
+    mock_rate_limit.core.limit = 5000
+    mock_rate_limit.core.reset = '2025-01-01 12:00:00'
+    collector.github.get_rate_limit.return_value = mock_rate_limit
+
     # Mock repository
     mock_repo = Mock()
     mock_workflows = Mock()
