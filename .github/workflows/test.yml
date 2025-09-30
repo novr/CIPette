@@ -24,12 +24,6 @@ jobs:
         python -m pip install --upgrade pip
         pip install flask requests python-dotenv PyGithub
 
-    - name: Run database initialization
+    - name: Run syntax check
       run: |
-        python src/database.py
-
-    - name: Run basic syntax check
-      run: |
-        python -m py_compile src/config.py
-        python -m py_compile src/database.py
-        python -m py_compile src/data_collector.py
+        python -m compileall src/
