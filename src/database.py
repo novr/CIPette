@@ -67,6 +67,21 @@ def initialize_database():
         ON runs (workflow_id, started_at)
     ''')
 
+    cursor.execute('''
+        CREATE INDEX IF NOT EXISTS idx_runs_conclusion
+        ON runs (conclusion)
+    ''')
+
+    cursor.execute('''
+        CREATE INDEX IF NOT EXISTS idx_runs_branch
+        ON runs (branch)
+    ''')
+
+    cursor.execute('''
+        CREATE INDEX IF NOT EXISTS idx_runs_event
+        ON runs (event)
+    ''')
+
     conn.commit()
     conn.close()
     print("Database initialized successfully.")
@@ -136,30 +151,35 @@ def insert_runs_batch(runs_data):
     conn = get_connection()
     cursor = conn.cursor()
 
-    # Use ON CONFLICT for true upsert behavior
-    for run_data in runs_data:
-        cursor.execute('''
-            INSERT INTO runs
-            (id, workflow_id, run_number, commit_sha, branch, event, status, conclusion,
-             started_at, completed_at, duration_seconds, actor, url)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(id) DO UPDATE SET
-                workflow_id = excluded.workflow_id,
-                run_number = excluded.run_number,
-                commit_sha = excluded.commit_sha,
-                branch = excluded.branch,
-                event = excluded.event,
-                status = excluded.status,
-                conclusion = excluded.conclusion,
-                started_at = excluded.started_at,
-                completed_at = excluded.completed_at,
-                duration_seconds = excluded.duration_seconds,
-                actor = excluded.actor,
-                url = excluded.url
-        ''', run_data)
+    try:
+        # Use ON CONFLICT for true upsert behavior
+        for run_data in runs_data:
+            cursor.execute('''
+                INSERT INTO runs
+                (id, workflow_id, run_number, commit_sha, branch, event, status, conclusion,
+                 started_at, completed_at, duration_seconds, actor, url)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    workflow_id = excluded.workflow_id,
+                    run_number = excluded.run_number,
+                    commit_sha = excluded.commit_sha,
+                    branch = excluded.branch,
+                    event = excluded.event,
+                    status = excluded.status,
+                    conclusion = excluded.conclusion,
+                    started_at = excluded.started_at,
+                    completed_at = excluded.completed_at,
+                    duration_seconds = excluded.duration_seconds,
+                    actor = excluded.actor,
+                    url = excluded.url
+            ''', run_data)
 
-    conn.commit()
-    conn.close()
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        raise e
+    finally:
+        conn.close()
 
 
 def get_workflows():
@@ -174,26 +194,203 @@ def get_workflows():
     return workflows
 
 
-def get_runs(workflow_id=None, limit=None):
-    """Retrieve workflow runs, optionally filtered by workflow_id."""
+def get_runs(workflow_id=None, limit=None, repository=None, status=None, conclusion=None):
+    """Retrieve workflow runs with various filters.
+
+    Args:
+        workflow_id: Filter by workflow ID
+        limit: Maximum number of results
+        repository: Filter by repository name
+        status: Filter by status (completed, in_progress, etc.)
+        conclusion: Filter by conclusion (success, failure, etc.)
+    """
     conn = get_connection()
     cursor = conn.cursor()
 
+    query = 'SELECT r.* FROM runs r'
+    conditions = []
+    params = []
+
+    # Join with workflows if filtering by repository
+    if repository:
+        query += ' JOIN workflows w ON r.workflow_id = w.id'
+        conditions.append('w.repository = ?')
+        params.append(repository)
+
     if workflow_id:
-        query = 'SELECT * FROM runs WHERE workflow_id = ? ORDER BY completed_at DESC'
-        params = (workflow_id,)
-    else:
-        query = 'SELECT * FROM runs ORDER BY completed_at DESC'
-        params = ()
+        conditions.append('r.workflow_id = ?')
+        params.append(workflow_id)
+
+    if status:
+        conditions.append('r.status = ?')
+        params.append(status)
+
+    if conclusion:
+        conditions.append('r.conclusion = ?')
+        params.append(conclusion)
+
+    if conditions:
+        query += ' WHERE ' + ' AND '.join(conditions)
+
+    query += ' ORDER BY r.started_at DESC'
 
     if limit:
-        query += f' LIMIT {limit}'
+        query += ' LIMIT ?'
+        params.append(int(limit))
 
     cursor.execute(query, params)
     runs = cursor.fetchall()
 
     conn.close()
     return runs
+
+
+def get_metrics_by_repository(repository=None, days=None):
+    """Calculate CI/CD metrics for repositories.
+
+    Args:
+        repository: Filter by specific repository (None for all)
+        days: Only include runs from last N days (None for all time)
+
+    Returns:
+        List of dicts with metrics for each repository/workflow combination
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    # Build query with optional filters
+    date_filter = ""
+    params = []
+
+    if days:
+        date_filter = "AND r.started_at >= datetime('now', '-{} days')".format(int(days))
+
+    if repository:
+        repo_filter = "AND w.repository = ?"
+        params.append(repository)
+    else:
+        repo_filter = ""
+
+    query = f'''
+        SELECT
+            w.repository,
+            w.name as workflow_name,
+            w.id as workflow_id,
+            COUNT(*) as total_runs,
+            COUNT(CASE WHEN r.conclusion = 'success' THEN 1 END) as success_count,
+            COUNT(CASE WHEN r.conclusion = 'failure' THEN 1 END) as failure_count,
+            ROUND(AVG(r.duration_seconds), 2) as avg_duration_seconds,
+            ROUND(
+                CAST(COUNT(CASE WHEN r.conclusion = 'success' THEN 1 END) AS FLOAT) /
+                NULLIF(COUNT(CASE WHEN r.conclusion IN ('success', 'failure') THEN 1 END), 0) * 100,
+                2
+            ) as success_rate,
+            MIN(r.started_at) as first_run,
+            MAX(r.started_at) as last_run
+        FROM workflows w
+        LEFT JOIN runs r ON w.id = r.workflow_id
+        WHERE r.status = 'completed'
+        {date_filter}
+        {repo_filter}
+        GROUP BY w.repository, w.name, w.id
+        ORDER BY w.repository, w.name
+    '''
+
+    cursor.execute(query, params)
+    rows = cursor.fetchall()
+
+    metrics = []
+    for row in rows:
+        metrics.append({
+            'repository': row['repository'],
+            'workflow_name': row['workflow_name'],
+            'workflow_id': row['workflow_id'],
+            'total_runs': row['total_runs'],
+            'success_count': row['success_count'],
+            'failure_count': row['failure_count'],
+            'avg_duration_seconds': row['avg_duration_seconds'],
+            'success_rate': row['success_rate'],
+            'first_run': row['first_run'],
+            'last_run': row['last_run']
+        })
+
+    conn.close()
+    return metrics
+
+
+def calculate_mttr(workflow_id=None, repository=None, days=None):
+    """Calculate Mean Time To Recovery (MTTR).
+
+    MTTR = Average time from a failure to the next success.
+
+    Args:
+        workflow_id: Filter by workflow ID
+        repository: Filter by repository
+        days: Only include runs from last N days
+
+    Returns:
+        Average MTTR in seconds, or None if no data
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    filters = ["r1.conclusion IN ('success', 'failure')"]
+    params = []
+
+    if workflow_id:
+        filters.append("r1.workflow_id = ?")
+        params.append(workflow_id)
+
+    if repository:
+        filters.append("w.repository = ?")
+        params.append(repository)
+
+    if days:
+        filters.append("r1.started_at >= datetime('now', '-{} days')".format(int(days)))
+
+    where_clause = " AND ".join(filters)
+
+    # Need to join workflows for repository filter
+    if repository:
+        from_clause = "FROM runs r1 JOIN workflows w ON r1.workflow_id = w.id"
+    else:
+        from_clause = "FROM runs r1"
+
+    query = f'''
+        SELECT
+            r1.id,
+            r1.started_at as failure_time,
+            MIN(r2.started_at) as recovery_time
+        {from_clause}
+        LEFT JOIN runs r2 ON
+            r2.workflow_id = r1.workflow_id AND
+            r2.started_at > r1.started_at AND
+            r2.conclusion = 'success'
+        WHERE {where_clause} AND r1.conclusion = 'failure'
+        GROUP BY r1.id, r1.started_at
+        HAVING recovery_time IS NOT NULL
+    '''
+
+    cursor.execute(query, params)
+    rows = cursor.fetchall()
+
+    if not rows:
+        conn.close()
+        return None
+
+    # Calculate average time to recovery
+    total_seconds = 0
+    count = 0
+
+    for row in rows:
+        failure_time = datetime.strptime(row['failure_time'], '%Y-%m-%d %H:%M:%S')
+        recovery_time = datetime.strptime(row['recovery_time'], '%Y-%m-%d %H:%M:%S')
+        delta = (recovery_time - failure_time).total_seconds()
+        total_seconds += delta
+        count += 1
+
+    conn.close()
+    return round(total_seconds / count, 2) if count > 0 else None
 
 
 if __name__ == '__main__':
