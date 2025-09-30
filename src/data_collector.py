@@ -1,5 +1,7 @@
 from github import Github, GithubException, Auth
 from datetime import datetime
+import json
+import os
 from config import GITHUB_TOKEN, TARGET_REPOSITORIES, MAX_WORKFLOW_RUNS
 from database import initialize_database, insert_workflow, insert_runs_batch
 
@@ -7,9 +9,44 @@ from database import initialize_database, insert_workflow, insert_runs_batch
 class GitHubDataCollector:
     """Collect workflow run data from GitHub Actions API using PyGithub."""
 
+    LAST_RUN_FILE = 'last_run.json'
+
     def __init__(self):
         auth = Auth.Token(GITHUB_TOKEN)
         self.github = Github(auth=auth)
+
+    def get_last_run_info(self):
+        """Read last run information from file."""
+        if not os.path.exists(self.LAST_RUN_FILE):
+            return None
+
+        try:
+            with open(self.LAST_RUN_FILE, 'r') as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError) as e:
+            print(f"Warning: Could not read last run file: {e}")
+            return None
+
+    def save_last_run_info(self, repo_timestamps, workflow_count, run_count):
+        """Save last run information to file.
+
+        Args:
+            repo_timestamps: Dict of {repo_name: timestamp}
+            workflow_count: Total workflows collected
+            run_count: Total runs collected
+        """
+        last_run_info = {
+            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'repositories': repo_timestamps,
+            'workflow_count': workflow_count,
+            'run_count': run_count
+        }
+
+        try:
+            with open(self.LAST_RUN_FILE, 'w') as f:
+                json.dump(last_run_info, f, indent=2)
+        except IOError as e:
+            print(f"Warning: Could not save last run file: {e}")
 
     def parse_datetime(self, dt):
         """Convert datetime to string format for SQLite."""
@@ -17,19 +54,29 @@ class GitHubDataCollector:
             return None
         return dt.strftime('%Y-%m-%d %H:%M:%S')
 
-    def collect_repository_data(self, repo_name):
-        """Collect all workflow and run data for a repository."""
+    def collect_repository_data(self, repo_name, since=None):
+        """Collect all workflow and run data for a repository with idempotency.
+
+        Args:
+            repo_name: Repository name in format 'owner/repo'
+            since: ISO 8601 datetime string to fetch runs created after this time
+        """
         print(f"\nCollecting data for repository: {repo_name}")
+        print(f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        if since:
+            print(f"Incremental update since: {since}")
 
         try:
             repo = self.github.get_repo(repo_name)
         except GithubException as e:
             print(f"Error accessing repository {repo_name}: {e}")
-            return
+            return 0, 0  # Return counts for tracking
 
-        # Get all workflows
+        # Get all workflows with pagination
         workflows = repo.get_workflows()
-        print(f"Found {workflows.totalCount} workflows")
+        workflow_count = workflows.totalCount
+        total_runs = 0
+        print(f"Found {workflow_count} workflows")
 
         for workflow in workflows:
             workflow_id = str(workflow.id)
@@ -42,7 +89,15 @@ class GitHubDataCollector:
 
             # Fetch workflow runs
             try:
-                runs = workflow.get_runs()[:MAX_WORKFLOW_RUNS]
+                # Get runs with optional time filter
+                if since:
+                    # Convert since to datetime for comparison
+                    since_dt = datetime.strptime(since, '%Y-%m-%d %H:%M:%S')
+                    runs_paginated = workflow.get_runs(created=f'>={since}')
+                else:
+                    runs_paginated = workflow.get_runs()
+
+                runs = list(runs_paginated[:MAX_WORKFLOW_RUNS])
                 print(f"    Found {len(runs)} runs")
 
                 # Prepare batch data
@@ -66,11 +121,14 @@ class GitHubDataCollector:
 
                 # Batch insert all runs
                 insert_runs_batch(runs_data)
+                total_runs += len(runs)
                 print(f"    Saved {len(runs)} runs to database")
 
             except GithubException as e:
                 print(f"    Error fetching runs for workflow {workflow_id}: {e}")
                 continue
+
+        return workflow_count, total_runs
 
     def _determine_status(self, run):
         """Determine run status from GitHub API response."""
@@ -100,6 +158,24 @@ class GitHubDataCollector:
             print("Example: TARGET_REPOSITORIES=owner/repo1,owner/repo2")
             return
 
+        # Show last run info
+        last_run = self.get_last_run_info()
+        if last_run:
+            print("=" * 60)
+            print("Last data collection:")
+            print(f"  Timestamp: {last_run['timestamp']}")
+            repos_info = last_run.get('repositories', {})
+            if isinstance(repos_info, dict):
+                print("  Repositories:")
+                for repo, ts in repos_info.items():
+                    print(f"    - {repo}: {ts}")
+            else:
+                # Old format compatibility
+                print(f"  Repositories: {', '.join(repos_info)}")
+            print(f"  Workflows: {last_run['workflow_count']}")
+            print(f"  Runs: {last_run['run_count']}")
+            print("=" * 60)
+
         # Initialize database
         initialize_database()
 
@@ -112,13 +188,34 @@ class GitHubDataCollector:
 
         print(f"Starting data collection for {len(repos)} repository(ies)...")
 
+        total_workflows = 0
+        total_runs = 0
+        repo_timestamps = {}
+
         for repo in repos:
             try:
-                self.collect_repository_data(repo)
+                # Get last run timestamp for this repo
+                since = None
+                if last_run and isinstance(last_run.get('repositories'), dict):
+                    since = last_run['repositories'].get(repo)
+
+                # Collect data
+                start_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                wf_count, run_count = self.collect_repository_data(repo, since=since)
+                total_workflows += wf_count
+                total_runs += run_count
+
+                # Record timestamp for this repo
+                repo_timestamps[repo] = start_time
             except Exception as e:
                 print(f"Error collecting data for {repo}: {e}")
 
         print("\nData collection completed!")
+        print(f"Total workflows collected: {total_workflows}")
+        print(f"Total runs collected: {total_runs}")
+
+        # Save this run info
+        self.save_last_run_info(repo_timestamps, total_workflows, total_runs)
 
 
 if __name__ == '__main__':

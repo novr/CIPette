@@ -20,6 +20,9 @@ env/
 *.sqlite
 *.sqlite3
 
+# Last run tracking
+last_run.json
+
 # IDE
 .vscode/
 .idea/
