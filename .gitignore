@@ -11,6 +11,9 @@ venv/
 ENV/
 env/
 
+# uv
+.python-version
+
 # Environment Variables
 .env
 .envrc

@@ -19,15 +19,19 @@ jobs:
       with:
         python-version: '3.13'
 
+    - name: Install uv
+      uses: astral-sh/setup-uv@v5
+      with:
+        version: "latest"
+
     - name: Install dependencies
       run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
+        uv sync --all-extras
 
     - name: Lint with ruff
       run: |
-        ruff check cipette/ tests/
+        uv run ruff check cipette/ tests/
 
     - name: Run tests
       run: |
-        pytest tests/ -v
+        uv run pytest tests/ -v

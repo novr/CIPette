@@ -1,0 +1,6 @@
+[tools]
+python = "3.13.7"
+
+[env]
+# Use uv for Python package management
+_.python.venv = { path = ".venv", create = true }
