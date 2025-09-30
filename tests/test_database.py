@@ -1,0 +1,275 @@
+import pytest
+import sqlite3
+import tempfile
+import os
+import sys
+
+# Add src to path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+
+from database import (
+    get_connection, initialize_database, insert_workflow, insert_run,
+    insert_runs_batch, get_workflows, get_runs, get_metrics_by_repository,
+    calculate_mttr
+)
+from config import DATABASE_PATH
+
+
+@pytest.fixture
+def test_db():
+    """Create a temporary test database."""
+    # Use a temporary database for testing
+    test_db_path = tempfile.mktemp(suffix='.db')
+
+    # Temporarily override DATABASE_PATH
+    import config
+    original_path = config.DATABASE_PATH
+    config.DATABASE_PATH = test_db_path
+
+    # Reload database module with new path
+    import importlib
+    import database
+    database.DATABASE_PATH = test_db_path
+    importlib.reload(database)
+
+    # Initialize test database
+    database.initialize_database()
+
+    yield test_db_path
+
+    # Cleanup
+    config.DATABASE_PATH = original_path
+    database.DATABASE_PATH = original_path
+    if os.path.exists(test_db_path):
+        os.remove(test_db_path)
+
+
+def test_initialize_database(test_db):
+    """Test database initialization."""
+    conn = sqlite3.connect(test_db)
+    cursor = conn.cursor()
+
+    # Check workflows table exists
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='workflows'")
+    assert cursor.fetchone() is not None
+
+    # Check runs table exists
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='runs'")
+    assert cursor.fetchone() is not None
+
+    # Check indexes exist
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='index' AND name='idx_runs_conclusion'")
+    assert cursor.fetchone() is not None
+
+    conn.close()
+
+
+def test_insert_and_get_workflow(test_db):
+    """Test workflow insertion and retrieval."""
+    import database
+    database.DATABASE_PATH = test_db
+
+    # Insert workflow
+    database.insert_workflow('123', 'owner/repo', 'Test Workflow', '.github/workflows/test.yml', 'active')
+
+    # Retrieve workflows
+    workflows = database.get_workflows()
+    assert len(workflows) == 1
+    assert workflows[0]['id'] == '123'
+    assert workflows[0]['repository'] == 'owner/repo'
+    assert workflows[0]['name'] == 'Test Workflow'
+
+
+def test_insert_and_get_runs(test_db):
+    """Test run insertion and retrieval."""
+    import database
+    database.DATABASE_PATH = test_db
+
+    # Insert workflow first
+    database.insert_workflow('123', 'owner/repo', 'Test Workflow')
+
+    # Insert run
+    database.insert_run(
+        '456', '123', 1, 'abc123', 'main', 'push',
+        'completed', 'success', '2025-01-01 10:00:00',
+        '2025-01-01 10:05:00', 300, 'testuser',
+        'https://github.com/owner/repo/actions/runs/456'
+    )
+
+    # Retrieve runs
+    runs = database.get_runs()
+    assert len(runs) == 1
+    assert runs[0]['id'] == '456'
+    assert runs[0]['conclusion'] == 'success'
+    assert runs[0]['duration_seconds'] == 300
+
+
+def test_insert_runs_batch(test_db):
+    """Test batch run insertion."""
+    import database
+    database.DATABASE_PATH = test_db
+
+    # Insert workflow
+    database.insert_workflow('123', 'owner/repo', 'Test Workflow')
+
+    # Batch insert runs
+    runs_data = [
+        ('456', '123', 1, 'abc123', 'main', 'push', 'completed', 'success',
+         '2025-01-01 10:00:00', '2025-01-01 10:05:00', 300, 'user1', 'https://github.com/test1'),
+        ('457', '123', 2, 'def456', 'main', 'push', 'completed', 'failure',
+         '2025-01-01 11:00:00', '2025-01-01 11:03:00', 180, 'user2', 'https://github.com/test2'),
+    ]
+    database.insert_runs_batch(runs_data)
+
+    # Verify
+    runs = database.get_runs()
+    assert len(runs) == 2
+
+
+def test_get_runs_with_filters(test_db):
+    """Test run retrieval with various filters."""
+    import database
+    database.DATABASE_PATH = test_db
+
+    # Setup test data
+    database.insert_workflow('123', 'owner/repo1', 'Workflow 1')
+    database.insert_workflow('124', 'owner/repo2', 'Workflow 2')
+
+    runs_data = [
+        ('456', '123', 1, 'abc', 'main', 'push', 'completed', 'success',
+         '2025-01-01 10:00:00', '2025-01-01 10:05:00', 300, 'user1', 'url1'),
+        ('457', '123', 2, 'def', 'main', 'push', 'completed', 'failure',
+         '2025-01-01 11:00:00', '2025-01-01 11:03:00', 180, 'user2', 'url2'),
+        ('458', '124', 1, 'ghi', 'dev', 'pull_request', 'completed', 'success',
+         '2025-01-01 12:00:00', '2025-01-01 12:02:00', 120, 'user3', 'url3'),
+    ]
+    database.insert_runs_batch(runs_data)
+
+    # Test workflow filter
+    runs = database.get_runs(workflow_id='123')
+    assert len(runs) == 2
+
+    # Test conclusion filter
+    runs = database.get_runs(conclusion='success')
+    assert len(runs) == 2
+
+    # Test repository filter
+    runs = database.get_runs(repository='owner/repo1')
+    assert len(runs) == 2
+
+    # Test limit
+    runs = database.get_runs(limit=1)
+    assert len(runs) == 1
+
+
+def test_get_metrics_by_repository(test_db):
+    """Test metrics calculation."""
+    import database
+    database.DATABASE_PATH = test_db
+
+    # Setup test data
+    database.insert_workflow('123', 'owner/repo', 'Test Workflow')
+
+    runs_data = [
+        ('456', '123', 1, 'abc', 'main', 'push', 'completed', 'success',
+         '2025-01-01 10:00:00', '2025-01-01 10:05:00', 300, 'user1', 'url1'),
+        ('457', '123', 2, 'def', 'main', 'push', 'completed', 'failure',
+         '2025-01-01 11:00:00', '2025-01-01 11:03:00', 180, 'user2', 'url2'),
+        ('458', '123', 3, 'ghi', 'main', 'push', 'completed', 'success',
+         '2025-01-01 12:00:00', '2025-01-01 12:04:00', 240, 'user3', 'url3'),
+    ]
+    database.insert_runs_batch(runs_data)
+
+    # Calculate metrics
+    metrics = database.get_metrics_by_repository()
+
+    assert len(metrics) == 1
+    assert metrics[0]['repository'] == 'owner/repo'
+    assert metrics[0]['total_runs'] == 3
+    assert metrics[0]['success_count'] == 2
+    assert metrics[0]['failure_count'] == 1
+    assert metrics[0]['success_rate'] == 66.67  # 2/3 * 100
+    assert metrics[0]['avg_duration_seconds'] == 240.0  # (300 + 180 + 240) / 3
+
+
+def test_calculate_mttr(test_db):
+    """Test MTTR calculation."""
+    import database
+    database.DATABASE_PATH = test_db
+
+    # Setup test data: failure followed by success
+    database.insert_workflow('123', 'owner/repo', 'Test Workflow')
+
+    runs_data = [
+        ('456', '123', 1, 'abc', 'main', 'push', 'completed', 'failure',
+         '2025-01-01 10:00:00', '2025-01-01 10:03:00', 180, 'user1', 'url1'),
+        ('457', '123', 2, 'def', 'main', 'push', 'completed', 'success',
+         '2025-01-01 10:10:00', '2025-01-01 10:15:00', 300, 'user2', 'url2'),
+    ]
+    database.insert_runs_batch(runs_data)
+
+    # Calculate MTTR
+    mttr = database.calculate_mttr(repository='owner/repo')
+
+    # MTTR should be 10 minutes = 600 seconds
+    assert mttr == 600.0
+
+
+def test_idempotency(test_db):
+    """Test that reinserting same data doesn't create duplicates."""
+    import database
+    database.DATABASE_PATH = test_db
+
+    # Insert workflow twice
+    database.insert_workflow('123', 'owner/repo', 'Test Workflow', 'path1', 'active')
+    database.insert_workflow('123', 'owner/repo', 'Test Workflow Updated', 'path2', 'inactive')
+
+    workflows = database.get_workflows()
+    assert len(workflows) == 1
+    assert workflows[0]['name'] == 'Test Workflow Updated'
+    assert workflows[0]['path'] == 'path2'
+
+    # Insert run twice
+    database.insert_run(
+        '456', '123', 1, 'abc123', 'main', 'push',
+        'completed', 'success', '2025-01-01 10:00:00',
+        '2025-01-01 10:05:00', 300, 'user1', 'url1'
+    )
+    database.insert_run(
+        '456', '123', 1, 'abc123', 'main', 'push',
+        'completed', 'failure', '2025-01-01 10:00:00',
+        '2025-01-01 10:06:00', 360, 'user1', 'url1'
+    )
+
+    runs = database.get_runs()
+    assert len(runs) == 1
+    assert runs[0]['conclusion'] == 'failure'
+    assert runs[0]['duration_seconds'] == 360
+
+
+def test_sql_injection_protection(test_db):
+    """Test that SQL injection attempts are safely handled."""
+    import database
+    database.DATABASE_PATH = test_db
+
+    database.insert_workflow('123', 'owner/repo', 'Test Workflow')
+    database.insert_run(
+        '456', '123', 1, 'abc', 'main', 'push', 'completed', 'success',
+        '2025-01-01 10:00:00', '2025-01-01 10:05:00', 300, 'user1', 'url1'
+    )
+
+    # Attempt SQL injection via limit parameter
+    # Should raise ValueError when trying to convert malicious string to int
+    with pytest.raises(ValueError):
+        runs = database.get_runs(limit="1; DROP TABLE runs; --")
+
+    # Verify table still exists (injection was prevented)
+    conn = sqlite3.connect(test_db)
+    cursor = conn.cursor()
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='runs'")
+    assert cursor.fetchone() is not None
+    conn.close()
+
+    # Normal usage should work
+    runs = database.get_runs(limit=1)
+    assert len(runs) == 1

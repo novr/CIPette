@@ -22,8 +22,8 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install flask requests python-dotenv PyGithub
+        pip install flask requests python-dotenv PyGithub pytest
 
-    - name: Run syntax check
+    - name: Run tests
       run: |
-        python -m compileall src/
+        pytest tests/ -v
