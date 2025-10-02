@@ -1,41 +1,80 @@
 import logging
 import sqlite3
 import time
+from contextlib import contextmanager
 from datetime import datetime
 from functools import lru_cache
+from typing import Generator
 
-from cipette.config import DATABASE_PATH
+from cipette.config import Config
 from cipette.retry import retry_database_operation
 
 logger = logging.getLogger(__name__)
 
 
-def get_connection():
-    """Create and return a database connection with context manager support.
+class DatabaseConnection:
+    """Database connection wrapper with proper context manager support."""
+    
+    def __init__(self, path: str, timeout: float = 30.0):
+        """Initialize database connection.
+        
+        Args:
+            path: Database file path
+            timeout: Connection timeout in seconds
+        """
+        self.path = path
+        self.timeout = timeout
+        self.conn = None
+    
+    def __enter__(self) -> sqlite3.Connection:
+        """Enter context manager and return connection."""
+        self.conn = sqlite3.connect(self.path, timeout=self.timeout)
+        self.conn.row_factory = sqlite3.Row  # Enable column access by name
+        
+        # Configure SQLite for better performance and concurrency
+        self.conn.execute("PRAGMA journal_mode=WAL")
+        self.conn.execute("PRAGMA synchronous=NORMAL")
+        self.conn.execute(f"PRAGMA busy_timeout={Config.DATABASE_BUSY_TIMEOUT}")
+        self.conn.execute("PRAGMA temp_store=MEMORY")
+        self.conn.execute(f"PRAGMA cache_size={Config.DATABASE_CACHE_SIZE}")
+        
+        return self.conn
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Exit context manager and handle connection cleanup."""
+        if self.conn:
+            if exc_type is not None:
+                # Exception occurred, rollback transaction
+                self.conn.rollback()
+                logger.error(f"Database transaction rolled back due to {exc_type.__name__}: {exc_val}")
+            else:
+                # No exception, commit transaction
+                self.conn.commit()
+            
+            self.conn.close()
+            self.conn = None
 
-    Returns:
-        sqlite3.Connection: Database connection that can be used as context manager
+
+@contextmanager
+def get_connection() -> Generator[sqlite3.Connection, None, None]:
+    """Create and return a database connection with proper context manager support.
+
+    Yields:
+        sqlite3.Connection: Database connection with proper cleanup
 
     Example:
         with get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM workflows")
     """
-    conn = sqlite3.connect(DATABASE_PATH, timeout=30.0)
-    conn.row_factory = sqlite3.Row  # Enable column access by name
-    # Enable WAL mode for better concurrency
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA synchronous=NORMAL")
-    conn.execute("PRAGMA busy_timeout=10000")  # 10秒のビジータイムアウト
-    conn.execute("PRAGMA temp_store=MEMORY")
-    conn.execute("PRAGMA cache_size=1000")
-    return conn
+    with DatabaseConnection(Config.DATABASE_PATH, Config.DATABASE_TIMEOUT) as conn:
+        yield conn
 
 
 def initialize_database():
     """Create database tables if they don't exist."""
-    conn = get_connection()
-    cursor = conn.cursor()
+    with get_connection() as conn:
+        cursor = conn.cursor()
 
     # Workflows table
     cursor.execute('''
@@ -165,9 +204,8 @@ def initialize_database():
         ON mttr_cache (calculated_at)
     ''')
 
-    conn.commit()
-    conn.close()
-    logger.info("Database initialized successfully.")
+        conn.commit()
+        logger.info("Database initialized successfully.")
 
 
 @retry_database_operation(max_retries=3)
@@ -182,72 +220,73 @@ def insert_workflow(workflow_id, repository, name, path=None, state=None, conn=N
         state: Workflow state
         conn: Optional database connection (for batch operations)
     """
-    should_close = False
-    if conn is None:
-        conn = get_connection()
-        should_close = True
-
-    try:
-        cursor = conn.cursor()
-        cursor.execute('''
-            INSERT INTO workflows (id, repository, name, path, state)
-            VALUES (?, ?, ?, ?, ?)
-            ON CONFLICT(id) DO UPDATE SET
-                repository = excluded.repository,
-                name = excluded.name,
-                path = excluded.path,
-                state = excluded.state
-        ''', (workflow_id, repository, name, path, state))
-
-        if should_close:
-            conn.commit()
-        return True
-    except sqlite3.OperationalError as e:
-        if "database is locked" in str(e):
-            logger.warning(f"Database locked for workflow {workflow_id}, skipping...")
-            return False
-        else:
-            if should_close:
-                conn.rollback()
+    if conn is not None:
+        # Use provided connection (for batch operations)
+        try:
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT INTO workflows (id, repository, name, path, state)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    repository = excluded.repository,
+                    name = excluded.name,
+                    path = excluded.path,
+                    state = excluded.state
+            ''', (workflow_id, repository, name, path, state))
+            return True
+        except sqlite3.OperationalError as e:
+            if "database is locked" in str(e):
+                logger.warning(f"Database locked for workflow {workflow_id}, skipping...")
+                return False
             raise
-    except Exception as e:
-        if should_close:
-            conn.rollback()
-        raise
-    finally:
-        if should_close:
-            conn.close()
+    else:
+        # Create new connection with context manager
+        try:
+            with get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    INSERT INTO workflows (id, repository, name, path, state)
+                    VALUES (?, ?, ?, ?, ?)
+                    ON CONFLICT(id) DO UPDATE SET
+                        repository = excluded.repository,
+                        name = excluded.name,
+                        path = excluded.path,
+                        state = excluded.state
+                ''', (workflow_id, repository, name, path, state))
+                return True
+        except sqlite3.OperationalError as e:
+            if "database is locked" in str(e):
+                logger.warning(f"Database locked for workflow {workflow_id}, skipping...")
+                return False
+            raise
 
 
 def insert_run(run_id, workflow_id, run_number, commit_sha, branch, event, status, conclusion,
                started_at, completed_at, duration_seconds, actor, url):
     """Insert or update a workflow run record with idempotency."""
-    conn = get_connection()
-    cursor = conn.cursor()
+    with get_connection() as conn:
+        cursor = conn.cursor()
 
-    cursor.execute('''
-        INSERT INTO runs
-        (id, workflow_id, run_number, commit_sha, branch, event, status, conclusion,
-         started_at, completed_at, duration_seconds, actor, url)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(id) DO UPDATE SET
-            workflow_id = excluded.workflow_id,
-            run_number = excluded.run_number,
-            commit_sha = excluded.commit_sha,
-            branch = excluded.branch,
-            event = excluded.event,
-            status = excluded.status,
-            conclusion = excluded.conclusion,
-            started_at = excluded.started_at,
-            completed_at = excluded.completed_at,
-            duration_seconds = excluded.duration_seconds,
-            actor = excluded.actor,
-            url = excluded.url
-    ''', (run_id, workflow_id, run_number, commit_sha, branch, event, status, conclusion,
-          started_at, completed_at, duration_seconds, actor, url))
-
-    conn.commit()
-    conn.close()
+        cursor.execute('''
+            INSERT INTO runs
+            (id, workflow_id, run_number, commit_sha, branch, event, status, conclusion,
+             started_at, completed_at, duration_seconds, actor, url)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                workflow_id = excluded.workflow_id,
+                run_number = excluded.run_number,
+                commit_sha = excluded.commit_sha,
+                branch = excluded.branch,
+                event = excluded.event,
+                status = excluded.status,
+                conclusion = excluded.conclusion,
+                started_at = excluded.started_at,
+                completed_at = excluded.completed_at,
+                duration_seconds = excluded.duration_seconds,
+                actor = excluded.actor,
+                url = excluded.url
+        ''', (run_id, workflow_id, run_number, commit_sha, branch, event, status, conclusion,
+              started_at, completed_at, duration_seconds, actor, url))
 
 
 @retry_database_operation(max_retries=3)
@@ -266,64 +305,76 @@ def insert_runs_batch(runs_data, conn=None):
     if not runs_data:
         return
 
-    should_close = False
-    if conn is None:
-        conn = get_connection()
-        should_close = True
-
-    try:
-        cursor = conn.cursor()
-        # Use executemany for better performance with ON CONFLICT for upsert
-        cursor.executemany('''
-            INSERT INTO runs
-            (id, workflow_id, run_number, commit_sha, branch, event, status, conclusion,
-             started_at, completed_at, duration_seconds, actor, url)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(id) DO UPDATE SET
-                workflow_id = excluded.workflow_id,
-                run_number = excluded.run_number,
-                commit_sha = excluded.commit_sha,
-                branch = excluded.branch,
-                event = excluded.event,
-                status = excluded.status,
-                conclusion = excluded.conclusion,
-                started_at = excluded.started_at,
-                completed_at = excluded.completed_at,
-                duration_seconds = excluded.duration_seconds,
-                actor = excluded.actor,
-                url = excluded.url
-        ''', runs_data)
-
-        if should_close:
-            conn.commit()
-        return True
-    except sqlite3.OperationalError as e:
-        if "database is locked" in str(e):
-            logger.warning(f"Database locked for batch insert, skipping {len(runs_data)} runs...")
-            return False
-        else:
-            if should_close:
-                conn.rollback()
+    if conn is not None:
+        # Use provided connection (for batch operations)
+        try:
+            cursor = conn.cursor()
+            # Use executemany for better performance with ON CONFLICT for upsert
+            cursor.executemany('''
+                INSERT INTO runs
+                (id, workflow_id, run_number, commit_sha, branch, event, status, conclusion,
+                 started_at, completed_at, duration_seconds, actor, url)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    workflow_id = excluded.workflow_id,
+                    run_number = excluded.run_number,
+                    commit_sha = excluded.commit_sha,
+                    branch = excluded.branch,
+                    event = excluded.event,
+                    status = excluded.status,
+                    conclusion = excluded.conclusion,
+                    started_at = excluded.started_at,
+                    completed_at = excluded.completed_at,
+                    duration_seconds = excluded.duration_seconds,
+                    actor = excluded.actor,
+                    url = excluded.url
+            ''', runs_data)
+            return True
+        except sqlite3.OperationalError as e:
+            if "database is locked" in str(e):
+                logger.warning(f"Database locked for batch insert, skipping {len(runs_data)} runs...")
+                return False
             raise
-    except Exception as e:
-        if should_close:
-            conn.rollback()
-        raise
-    finally:
-        if should_close:
-            conn.close()
+    else:
+        # Create new connection with context manager
+        try:
+            with get_connection() as conn:
+                cursor = conn.cursor()
+                # Use executemany for better performance with ON CONFLICT for upsert
+                cursor.executemany('''
+                    INSERT INTO runs
+                    (id, workflow_id, run_number, commit_sha, branch, event, status, conclusion,
+                     started_at, completed_at, duration_seconds, actor, url)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(id) DO UPDATE SET
+                        workflow_id = excluded.workflow_id,
+                        run_number = excluded.run_number,
+                        commit_sha = excluded.commit_sha,
+                        branch = excluded.branch,
+                        event = excluded.event,
+                        status = excluded.status,
+                        conclusion = excluded.conclusion,
+                        started_at = excluded.started_at,
+                        completed_at = excluded.completed_at,
+                        duration_seconds = excluded.duration_seconds,
+                        actor = excluded.actor,
+                        url = excluded.url
+                ''', runs_data)
+                return True
+        except sqlite3.OperationalError as e:
+            if "database is locked" in str(e):
+                logger.warning(f"Database locked for batch insert, skipping {len(runs_data)} runs...")
+                return False
+            raise
 
 
 def get_workflows():
     """Retrieve all workflows."""
-    conn = get_connection()
-    cursor = conn.cursor()
-
-    cursor.execute('SELECT * FROM workflows ORDER BY repository, name')
-    workflows = cursor.fetchall()
-
-    conn.close()
-    return workflows
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM workflows ORDER BY repository, name')
+        workflows = cursor.fetchall()
+        return workflows
 
 
 def get_runs(workflow_id=None, limit=None, repository=None, status=None, conclusion=None):
@@ -336,45 +387,43 @@ def get_runs(workflow_id=None, limit=None, repository=None, status=None, conclus
         status: Filter by status (completed, in_progress, etc.)
         conclusion: Filter by conclusion (success, failure, etc.)
     """
-    conn = get_connection()
-    cursor = conn.cursor()
+    with get_connection() as conn:
+        cursor = conn.cursor()
 
-    query = 'SELECT r.* FROM runs r'
-    conditions = []
-    params = []
+        query = 'SELECT r.* FROM runs r'
+        conditions = []
+        params = []
 
-    # Join with workflows if filtering by repository
-    if repository:
-        query += ' JOIN workflows w ON r.workflow_id = w.id'
-        conditions.append('w.repository = ?')
-        params.append(repository)
+        # Join with workflows if filtering by repository
+        if repository:
+            query += ' JOIN workflows w ON r.workflow_id = w.id'
+            conditions.append('w.repository = ?')
+            params.append(repository)
 
-    if workflow_id:
-        conditions.append('r.workflow_id = ?')
-        params.append(workflow_id)
+        if workflow_id:
+            conditions.append('r.workflow_id = ?')
+            params.append(workflow_id)
 
-    if status:
-        conditions.append('r.status = ?')
-        params.append(status)
+        if status:
+            conditions.append('r.status = ?')
+            params.append(status)
 
-    if conclusion:
-        conditions.append('r.conclusion = ?')
-        params.append(conclusion)
+        if conclusion:
+            conditions.append('r.conclusion = ?')
+            params.append(conclusion)
 
-    if conditions:
-        query += ' WHERE ' + ' AND '.join(conditions)
+        if conditions:
+            query += ' WHERE ' + ' AND '.join(conditions)
 
-    query += ' ORDER BY r.started_at DESC'
+        query += ' ORDER BY r.started_at DESC'
 
-    if limit:
-        query += ' LIMIT ?'
-        params.append(int(limit))
+        if limit:
+            query += ' LIMIT ?'
+            params.append(int(limit))
 
-    cursor.execute(query, params)
-    runs = cursor.fetchall()
-
-    conn.close()
-    return runs
+        cursor.execute(query, params)
+        runs = cursor.fetchall()
+        return runs
 
 
 def _build_metrics_query(repository=None, days=None):
@@ -482,34 +531,33 @@ def _get_metrics_cached(repository, days, cache_key):
     Returns:
         Tuple of metric dictionaries
     """
-    conn = get_connection()
-    cursor = conn.cursor()
+    with get_connection() as conn:
+        cursor = conn.cursor()
 
-    # Build unified query (eliminates code duplication)
-    query, params = _build_metrics_query(repository=repository, days=days)
+        # Build unified query (eliminates code duplication)
+        query, params = _build_metrics_query(repository=repository, days=days)
 
-    cursor.execute(query, params)
-    rows = cursor.fetchall()
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
 
-    metrics = []
-    for row in rows:
-        metrics.append({
-            'repository': row['repository'],
-            'workflow_name': row['workflow_name'],
-            'workflow_id': row['workflow_id'],
-            'total_runs': row['total_runs'],
-            'success_count': row['success_count'],
-            'failure_count': row['failure_count'],
-            'avg_duration_seconds': row['avg_duration_seconds'],
-            'success_rate': row['success_rate'],
-            'first_run': row['first_run'],
-            'last_run': row['last_run'],
-            'mttr_seconds': row['mttr_seconds']
-        })
+        metrics = []
+        for row in rows:
+            metrics.append({
+                'repository': row['repository'],
+                'workflow_name': row['workflow_name'],
+                'workflow_id': row['workflow_id'],
+                'total_runs': row['total_runs'],
+                'success_count': row['success_count'],
+                'failure_count': row['failure_count'],
+                'avg_duration_seconds': row['avg_duration_seconds'],
+                'success_rate': row['success_rate'],
+                'first_run': row['first_run'],
+                'last_run': row['last_run'],
+                'mttr_seconds': row['mttr_seconds']
+            })
 
-    conn.close()
-    # Return as tuple for lru_cache (lists are not hashable)
-    return tuple(tuple(m.items()) for m in metrics)
+        # Return as tuple for lru_cache (lists are not hashable)
+        return tuple(tuple(m.items()) for m in metrics)
 
 
 def get_metrics_by_repository(repository=None, days=None):
@@ -545,68 +593,66 @@ def calculate_mttr(workflow_id=None, repository=None, days=None):
     Returns:
         Average MTTR in seconds, or None if no data
     """
-    conn = get_connection()
-    cursor = conn.cursor()
+    with get_connection() as conn:
+        cursor = conn.cursor()
 
-    filters = ["r1.conclusion IN ('success', 'failure')", "r1.status = 'completed'", "r1.completed_at IS NOT NULL"]
-    params = []
+        filters = ["r1.conclusion IN ('success', 'failure')", "r1.status = 'completed'", "r1.completed_at IS NOT NULL"]
+        params = []
 
-    if workflow_id:
-        filters.append("r1.workflow_id = ?")
-        params.append(workflow_id)
+        if workflow_id:
+            filters.append("r1.workflow_id = ?")
+            params.append(workflow_id)
 
-    if repository:
-        filters.append("w.repository = ?")
-        params.append(repository)
+        if repository:
+            filters.append("w.repository = ?")
+            params.append(repository)
 
-    if days:
-        filters.append("r1.completed_at >= datetime('now', '-' || ? || ' days')")
-        params.append(int(days))
+        if days:
+            filters.append("r1.completed_at >= datetime('now', '-' || ? || ' days')")
+            params.append(int(days))
 
-    where_clause = " AND ".join(filters)
+        where_clause = " AND ".join(filters)
 
-    # Need to join workflows for repository filter
-    if repository:
-        from_clause = "FROM runs r1 JOIN workflows w ON r1.workflow_id = w.id"
-    else:
-        from_clause = "FROM runs r1"
+        # Need to join workflows for repository filter
+        if repository:
+            from_clause = "FROM runs r1 JOIN workflows w ON r1.workflow_id = w.id"
+        else:
+            from_clause = "FROM runs r1"
 
-    query = f'''
-        SELECT
-            r1.id,
-            r1.completed_at as failure_time,
-            MIN(r2.completed_at) as recovery_time
-        {from_clause}
-        LEFT JOIN runs r2 ON
-            r2.workflow_id = r1.workflow_id AND
-            r2.completed_at > r1.completed_at AND
-            r2.conclusion = 'success' AND
-            r2.status = 'completed'
-        WHERE {where_clause} AND r1.conclusion = 'failure'
-        GROUP BY r1.id, r1.completed_at
-        HAVING recovery_time IS NOT NULL
-    '''
+        query = f'''
+            SELECT
+                r1.id,
+                r1.completed_at as failure_time,
+                MIN(r2.completed_at) as recovery_time
+            {from_clause}
+            LEFT JOIN runs r2 ON
+                r2.workflow_id = r1.workflow_id AND
+                r2.completed_at > r1.completed_at AND
+                r2.conclusion = 'success' AND
+                r2.status = 'completed'
+            WHERE {where_clause} AND r1.conclusion = 'failure'
+            GROUP BY r1.id, r1.completed_at
+            HAVING recovery_time IS NOT NULL
+        '''
 
-    cursor.execute(query, params)
-    rows = cursor.fetchall()
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
 
-    if not rows:
-        conn.close()
-        return None
+        if not rows:
+            return None
 
-    # Calculate average time to recovery
-    total_seconds = 0
-    count = 0
+        # Calculate average time to recovery
+        total_seconds = 0
+        count = 0
 
-    for row in rows:
-        failure_time = datetime.strptime(row['failure_time'], '%Y-%m-%d %H:%M:%S')
-        recovery_time = datetime.strptime(row['recovery_time'], '%Y-%m-%d %H:%M:%S')
-        delta = (recovery_time - failure_time).total_seconds()
-        total_seconds += delta
-        count += 1
+        for row in rows:
+            failure_time = datetime.strptime(row['failure_time'], '%Y-%m-%d %H:%M:%S')
+            recovery_time = datetime.strptime(row['recovery_time'], '%Y-%m-%d %H:%M:%S')
+            delta = (recovery_time - failure_time).total_seconds()
+            total_seconds += delta
+            count += 1
 
-    conn.close()
-    return round(total_seconds / count, 2) if count > 0 else None
+        return round(total_seconds / count, 2) if count > 0 else None
 
 
 def refresh_mttr_cache():
@@ -622,65 +668,60 @@ def refresh_mttr_cache():
     logger.info("Starting MTTR cache refresh...")
     start_time = time.time()
 
-    conn = get_connection()
-    cursor = conn.cursor()
-
     try:
-        # Get all workflows
-        cursor.execute('SELECT id FROM workflows')
-        workflows = cursor.fetchall()
+        with get_connection() as conn:
+            cursor = conn.cursor()
 
-        success_count = 0
-        error_count = 0
+            # Get all workflows
+            cursor.execute('SELECT id FROM workflows')
+            workflows = cursor.fetchall()
 
-        for workflow in workflows:
-            workflow_id = workflow['id']
+            success_count = 0
+            error_count = 0
 
-            try:
-                # Calculate MTTR using existing function
-                mttr = calculate_mttr(workflow_id=workflow_id)
+            for workflow in workflows:
+                workflow_id = workflow['id']
 
-                if mttr is not None:
-                    # Count sample size (number of failures)
-                    cursor.execute('''
-                        SELECT COUNT(*) as count
-                        FROM runs
-                        WHERE workflow_id = ?
-                            AND conclusion = 'failure'
-                            AND status = 'completed'
-                    ''', (workflow_id,))
-                    sample_size = cursor.fetchone()['count']
+                try:
+                    # Calculate MTTR using existing function
+                    mttr = calculate_mttr(workflow_id=workflow_id)
 
-                    # Insert or update cache
-                    cursor.execute('''
-                        INSERT INTO mttr_cache (workflow_id, mttr_seconds, sample_size, calculated_at)
-                        VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-                        ON CONFLICT(workflow_id) DO UPDATE SET
-                            mttr_seconds = excluded.mttr_seconds,
-                            sample_size = excluded.sample_size,
-                            calculated_at = excluded.calculated_at
-                    ''', (workflow_id, mttr, sample_size))
-                    success_count += 1
-                else:
-                    # No MTTR data (no failures or no recovery) - clear cache entry
-                    cursor.execute('DELETE FROM mttr_cache WHERE workflow_id = ?', (workflow_id,))
+                    if mttr is not None:
+                        # Count sample size (number of failures)
+                        cursor.execute('''
+                            SELECT COUNT(*) as count
+                            FROM runs
+                            WHERE workflow_id = ?
+                                AND conclusion = 'failure'
+                                AND status = 'completed'
+                        ''', (workflow_id,))
+                        sample_size = cursor.fetchone()['count']
 
-            except Exception as e:
-                logger.error(f"Error calculating MTTR for workflow {workflow_id}: {e}")
-                error_count += 1
-                continue
+                        # Insert or update cache
+                        cursor.execute('''
+                            INSERT INTO mttr_cache (workflow_id, mttr_seconds, sample_size, calculated_at)
+                            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+                            ON CONFLICT(workflow_id) DO UPDATE SET
+                                mttr_seconds = excluded.mttr_seconds,
+                                sample_size = excluded.sample_size,
+                                calculated_at = excluded.calculated_at
+                        ''', (workflow_id, mttr, sample_size))
+                        success_count += 1
+                    else:
+                        # No MTTR data (no failures or no recovery) - clear cache entry
+                        cursor.execute('DELETE FROM mttr_cache WHERE workflow_id = ?', (workflow_id,))
 
-        conn.commit()
-        elapsed = time.time() - start_time
-        logger.info(f"MTTR cache refresh completed: {success_count} updated, {error_count} errors, {elapsed:.2f}s")
+                except Exception as e:
+                    logger.error(f"Error calculating MTTR for workflow {workflow_id}: {e}")
+                    error_count += 1
+                    continue
+
+            elapsed = time.time() - start_time
+            logger.info(f"MTTR cache refresh completed: {success_count} updated, {error_count} errors, {elapsed:.2f}s")
 
     except Exception as e:
         logger.error(f"MTTR cache refresh failed: {e}")
-        conn.rollback()
         raise
-
-    finally:
-        conn.close()
 
 
 def clear_mttr_cache():
@@ -692,17 +733,11 @@ def clear_mttr_cache():
     - Forcing full recalculation
     """
     logger.info("Clearing MTTR cache...")
-    conn = get_connection()
-    cursor = conn.cursor()
-
-    try:
+    with get_connection() as conn:
+        cursor = conn.cursor()
         cursor.execute('DELETE FROM mttr_cache')
         deleted_count = cursor.rowcount
-        conn.commit()
         logger.info(f"MTTR cache cleared: {deleted_count} entries removed")
-
-    finally:
-        conn.close()
 
 
 if __name__ == '__main__':
