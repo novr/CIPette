@@ -1,8 +1,10 @@
 import json
 import logging
 import os
+import time
 from datetime import UTC, datetime
 
+import requests
 from github import (
     Auth,
     BadCredentialsException,
@@ -12,6 +14,7 @@ from github import (
 )
 
 from cipette.config import GITHUB_TOKEN, MAX_WORKFLOW_RUNS, TARGET_REPOSITORIES
+from cipette.database import get_connection
 from cipette.database import initialize_database, insert_runs_batch, insert_workflow
 
 # Configure logging
@@ -24,25 +27,103 @@ logger = logging.getLogger(__name__)
 
 
 class GitHubDataCollector:
-    """Collect workflow run data from GitHub Actions API using PyGithub."""
+    """Collect workflow run data from GitHub Actions API using PyGithub and GraphQL."""
 
     LAST_RUN_FILE = 'last_run.json'
+    GRAPHQL_ENDPOINT = 'https://api.github.com/graphql'
+    
+    # GraphQL query for fetching repository workflows and runs
+    WORKFLOWS_QUERY = """
+    query GetRepositoryWorkflows($owner: String!, $repo: String!, $first: Int!) {
+      repository(owner: $owner, name: $repo) {
+        name
+        workflows(first: $first) {
+          nodes {
+            id
+            name
+            path
+            state
+            runs(first: 100) {
+              nodes {
+                id
+                runNumber
+                headSha
+                headBranch
+                event
+                status
+                conclusion
+                runStartedAt
+                updatedAt
+                actor {
+                  login
+                }
+                url
+              }
+            }
+          }
+        }
+      }
+    }
+    """
 
     def __init__(self):
         auth = Auth.Token(GITHUB_TOKEN)
         self.github = Github(auth=auth)
+        self.session = requests.Session()
+        self.session.headers.update({
+            'Authorization': f'token {GITHUB_TOKEN}',
+            'Content-Type': 'application/json',
+        })
 
     def check_rate_limit(self):
         """Check and display current GitHub API rate limit status."""
         rate_limit = self.github.get_rate_limit()
         core = rate_limit.resources.core
-        logger.info(f"API Rate Limit: {core.remaining}/{core.limit} (resets at {core.reset.strftime('%Y-%m-%d %H:%M:%S')})")
+        
+        # Convert UTC reset time to local time
+        reset_time_local = core.reset.astimezone()
+        reset_time_str = reset_time_local.strftime('%Y-%m-%d %H:%M:%S %Z')
+        
+        logger.info(f"API Rate Limit: {core.remaining}/{core.limit} (resets at {reset_time_str})")
 
         # Warn if running low
         if core.remaining < 100:
             logger.warning(f"Only {core.remaining} API calls remaining!")
 
         return core.remaining
+
+    def wait_for_rate_limit_reset(self):
+        """Wait for rate limit reset and display local time countdown."""
+        rate_limit = self.github.get_rate_limit()
+        core = rate_limit.resources.core
+        
+        if core.remaining > 0:
+            return  # No need to wait
+        
+        # Calculate wait time
+        reset_time = core.reset
+        now = datetime.now(UTC)
+        wait_seconds = int((reset_time - now).total_seconds()) + 1
+        
+        if wait_seconds <= 0:
+            return
+        
+        # Convert reset time to local time
+        reset_time_local = reset_time.astimezone()
+        reset_time_str = reset_time_local.strftime('%Y-%m-%d %H:%M:%S %Z')
+        
+        logger.warning(f"Rate limit exceeded! Waiting until {reset_time_str}")
+        logger.info(f"Waiting {wait_seconds} seconds ({wait_seconds//60} minutes {wait_seconds%60} seconds)...")
+        
+        # Countdown display
+        for remaining in range(wait_seconds, 0, -1):
+            if remaining % 60 == 0 or remaining <= 10:  # Show every minute or last 10 seconds
+                minutes = remaining // 60
+                seconds = remaining % 60
+                logger.info(f"Rate limit reset in {minutes}m {seconds}s...")
+            time.sleep(1)
+        
+        logger.info("Rate limit reset! Continuing data collection...")
 
     def get_last_run_info(self):
         """Read last run information from file."""
@@ -56,15 +137,176 @@ class GitHubDataCollector:
             logger.warning(f"Could not read last run file: {e}")
             return None
 
-    def save_last_run_info(self, repo_timestamps):
+    def get_etag_for_repo(self, repo_name):
+        """Get ETag for a specific repository."""
+        last_run = self.get_last_run_info()
+        if not last_run:
+            return None
+        
+        repos_info = last_run.get('repositories', {})
+        if not isinstance(repos_info, dict):
+            # Old format compatibility - no ETag available
+            return None
+        
+        repo_data = repos_info.get(repo_name, {})
+        if isinstance(repo_data, dict):
+            return repo_data.get('workflows_etag')
+        else:
+            # Old format - just timestamp string
+            return None
+
+    def save_etag_for_repo(self, repo_name, etag, timestamp):
+        """Save ETag for a specific repository."""
+        last_run = self.get_last_run_info() or {'repositories': {}}
+        
+        if repo_name not in last_run['repositories']:
+            last_run['repositories'][repo_name] = {}
+        
+        last_run['repositories'][repo_name]['workflows_etag'] = etag
+        last_run['repositories'][repo_name]['last_collected'] = timestamp
+        
+        self.save_last_run_info(last_run['repositories'])
+
+    def make_graphql_request(self, query, variables, etag=None):
+        """Make a GraphQL request to GitHub API with optional ETag."""
+        headers = {}
+        if etag:
+            headers['If-None-Match'] = etag
+        
+        payload = {
+            'query': query,
+            'variables': variables
+        }
+        
+        try:
+            response = self.session.post(
+                self.GRAPHQL_ENDPOINT,
+                json=payload,
+                headers=headers,
+                timeout=30
+            )
+            
+            if response.status_code == 304:
+                # Not Modified - no data changes
+                return None, response.headers.get('ETag')
+            elif response.status_code == 200:
+                data = response.json()
+                if 'errors' in data:
+                    logger.error(f"GraphQL errors: {data['errors']}")
+                    return None, None
+                return data['data'], response.headers.get('ETag')
+            else:
+                logger.error(f"GraphQL request failed: {response.status_code} - {response.text}")
+                return None, None
+                
+        except requests.RequestException as e:
+            logger.error(f"GraphQL request error: {e}")
+            return None, None
+
+    def collect_repository_data_graphql(self, repo_name, etag=None):
+        """Collect repository data using GraphQL API."""
+        owner, repo = repo_name.split('/')
+        
+        variables = {
+            'owner': owner,
+            'repo': repo,
+            'first': 50  # Maximum workflows to fetch
+        }
+        
+        logger.info(f"Fetching data for {repo_name} using GraphQL...")
+        data, new_etag = self.make_graphql_request(
+            self.WORKFLOWS_QUERY, 
+            variables, 
+            etag
+        )
+        
+        if data is None and new_etag:
+            # No changes (304 Not Modified)
+            logger.info(f"No changes for {repo_name} (ETag: {new_etag})")
+            return 0, 0, new_etag
+        
+        if not data:
+            logger.error(f"Failed to fetch data for {repo_name}")
+            return 0, 0, None
+        
+        repository = data.get('repository')
+        if not repository:
+            logger.error(f"Repository {repo_name} not found")
+            return 0, 0, None
+        
+        workflows = repository.get('workflows', {}).get('nodes', [])
+        logger.info(f"Found {len(workflows)} workflows for {repo_name}")
+        
+        # Process workflows and runs
+        total_workflows = 0
+        total_runs = 0
+        
+        with get_connection() as conn:
+            for workflow in workflows:
+                workflow_id = workflow['id']
+                workflow_name = workflow['name']
+                workflow_path = workflow.get('path')
+                workflow_state = workflow.get('state')
+                
+                # Insert workflow
+                insert_workflow(
+                    workflow_id, repo_name, workflow_name, 
+                    workflow_path, workflow_state, conn=conn
+                )
+                total_workflows += 1
+                
+                # Process runs
+                runs = workflow.get('runs', {}).get('nodes', [])
+                runs_data = []
+                
+                for run in runs:
+                    run_id = run['id']
+                    run_number = run['runNumber']
+                    commit_sha = run.get('headSha')
+                    branch = run.get('headBranch')
+                    event = run.get('event')
+                    status = run.get('status')
+                    conclusion = run.get('conclusion')
+                    
+                    # Parse timestamps
+                    started_at = self.parse_datetime(run.get('runStartedAt'))
+                    completed_at = self.parse_datetime(run.get('updatedAt') if status == 'completed' else None)
+                    
+                    # Calculate duration
+                    duration_seconds = None
+                    if run.get('runStartedAt') and run.get('updatedAt') and status == 'completed':
+                        start = datetime.fromisoformat(run['runStartedAt'].replace('Z', '+00:00'))
+                        end = datetime.fromisoformat(run['updatedAt'].replace('Z', '+00:00'))
+                        duration_seconds = int((end - start).total_seconds())
+                    
+                    # Get actor
+                    actor = run.get('actor', {}).get('login') if run.get('actor') else None
+                    url = run.get('url')
+                    
+                    runs_data.append((
+                        run_id, workflow_id, run_number, commit_sha, branch, event,
+                        status, conclusion, started_at, completed_at, duration_seconds, actor, url
+                    ))
+                
+                # Batch insert runs
+                if runs_data:
+                    insert_runs_batch(runs_data, conn=conn)
+                    total_runs += len(runs_data)
+                    logger.info(f"Saved {len(runs_data)} runs for workflow {workflow_name}")
+            
+            conn.commit()
+        
+        logger.info(f"Successfully processed {total_workflows} workflows and {total_runs} runs for {repo_name}")
+        return total_workflows, total_runs, new_etag
+
+    def save_last_run_info(self, repo_data):
         """Save last run information to file.
 
         Args:
-            repo_timestamps: Dict of {repo_name: ISO 8601 UTC timestamp}
+            repo_data: Dict of {repo_name: {'last_collected': timestamp, 'workflows_etag': etag}}
         """
         last_run_info = {
-            'timestamp': datetime.now(UTC).isoformat(),
-            'repositories': repo_timestamps,
+            'repositories': repo_data,
         }
 
         try:
@@ -216,7 +458,6 @@ class GitHubDataCollector:
         if last_run:
             logger.info("=" * 60)
             logger.info("Last data collection:")
-            logger.info(f"  Timestamp: {last_run['timestamp']}")
             repos_info = last_run.get('repositories', {})
             if isinstance(repos_info, dict):
                 logger.info("  Repositories:")
@@ -239,25 +480,43 @@ class GitHubDataCollector:
 
         logger.info(f"Starting data collection for {len(repos)} repository(ies)...")
 
+        # Check rate limit before starting
+        remaining_calls = self.check_rate_limit()
+        if remaining_calls < 50:
+            logger.warning("Low API rate limit remaining. Consider running later.")
+        
+        # Wait for rate limit reset if needed
+        self.wait_for_rate_limit_reset()
+
         total_workflows = 0
         total_runs = 0
         repo_timestamps = {}
 
         for repo in repos:
             try:
-                # Get last run timestamp for this repo (ISO 8601 UTC)
-                since = None
-                if last_run and isinstance(last_run.get('repositories'), dict):
-                    since = last_run['repositories'].get(repo)
+                # Get ETag for this repo
+                etag = self.get_etag_for_repo(repo)
 
-                # Collect data (may raise exceptions)
+                # Collect data using REST API (fallback for now)
                 start_time = datetime.now(UTC).isoformat()
-                wf_count, run_count = self.collect_repository_data(repo, since=since)
+                wf_count, run_count = self.collect_repository_data(repo, since=None)
                 total_workflows += wf_count
                 total_runs += run_count
 
-                # Record timestamp for this repo (ISO 8601 UTC)
-                repo_timestamps[repo] = start_time
+                # Record timestamp for this repo
+                repo_timestamps[repo] = {
+                    'last_collected': start_time,
+                    'workflows_etag': None
+                }
+                
+                # Check rate limit after each repository
+                remaining_calls = self.check_rate_limit()
+                if remaining_calls < 10:
+                    logger.warning("Very low API rate limit. Stopping collection.")
+                    break
+                
+                # Wait for rate limit reset if needed before next repository
+                self.wait_for_rate_limit_reset()
 
             except BadCredentialsException:
                 logger.error(f"Invalid GitHub credentials for {repo}")
@@ -267,7 +526,9 @@ class GitHubDataCollector:
             except RateLimitExceededException as e:
                 logger.error(f"GitHub API rate limit exceeded for {repo}")
                 logger.error(f"Rate limit resets at: {e}")
-                break  # Stop to avoid further rate limit violations
+                # Wait for rate limit reset before continuing
+                self.wait_for_rate_limit_reset()
+                continue  # Continue with next repository after waiting
 
             except GithubException as e:
                 logger.error(f"GitHub API error for {repo}: {e.status} - {e.data.get('message', 'Unknown error')}")

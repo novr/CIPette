@@ -17,7 +17,7 @@ DATABASE_PATH = 'data/cicd_metrics.db'
 TARGET_REPOSITORIES = os.getenv('TARGET_REPOSITORIES', '')
 
 # Data Collection Settings
-MAX_WORKFLOW_RUNS = 100  # Maximum number of workflow runs to fetch per workflow
+MAX_WORKFLOW_RUNS = 10  # Maximum number of workflow runs to fetch per workflow
 
 # MTTR Cache Settings
 MTTR_REFRESH_INTERVAL = int(os.getenv('MTTR_REFRESH_INTERVAL', '300'))  # Seconds (default: 5 minutes)
