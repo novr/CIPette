@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import sqlite3
 import time
 from datetime import UTC, datetime
 
@@ -545,6 +546,22 @@ class GitHubDataCollector:
                 logger.error(f"File system error for {repo}: {e}")
                 logger.info(f"Skipping {repo}, continuing with next repository...")
                 continue  # Try next repository
+            
+            except sqlite3.OperationalError as e:
+                if "database is locked" in str(e):
+                    logger.warning(f"Database locked for {repo}, retrying in 5 seconds...")
+                    time.sleep(5)
+                    try:
+                        wf_count, run_count = self.collect_repository_data(repo, since=None)
+                        total_workflows += wf_count
+                        total_runs += run_count
+                        logger.info(f"Retry successful for {repo}: {wf_count} workflows, {run_count} runs")
+                    except Exception as retry_e:
+                        logger.error(f"Retry failed for {repo}: {retry_e}")
+                        continue
+                else:
+                    logger.error(f"Database error for {repo}: {e}")
+                    continue
 
             except Exception as e:
                 # Catch database errors and other unexpected errors
