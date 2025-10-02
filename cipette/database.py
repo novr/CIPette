@@ -5,17 +5,7 @@ from datetime import datetime
 from functools import lru_cache
 
 from cipette.config import DATABASE_PATH
-
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S',
-    handlers=[
-        logging.FileHandler('data/database.log'),
-        logging.StreamHandler()
-    ]
-)
+from cipette.retry import retry_database_operation
 
 logger = logging.getLogger(__name__)
 
@@ -31,14 +21,14 @@ def get_connection():
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM workflows")
     """
-    conn = sqlite3.connect(DATABASE_PATH, timeout=60.0)
+    conn = sqlite3.connect(DATABASE_PATH, timeout=30.0)
     conn.row_factory = sqlite3.Row  # Enable column access by name
     # Enable WAL mode for better concurrency
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")
-    conn.execute("PRAGMA busy_timeout=30000")  # 30秒のビジータイムアウト
+    conn.execute("PRAGMA busy_timeout=10000")  # 10秒のビジータイムアウト
     conn.execute("PRAGMA temp_store=MEMORY")
-    conn.execute("PRAGMA cache_size=10000")
+    conn.execute("PRAGMA cache_size=1000")
     return conn
 
 
@@ -180,6 +170,7 @@ def initialize_database():
     logger.info("Database initialized successfully.")
 
 
+@retry_database_operation(max_retries=3)
 def insert_workflow(workflow_id, repository, name, path=None, state=None, conn=None):
     """Insert or update a workflow record with idempotency.
 
@@ -196,41 +187,36 @@ def insert_workflow(workflow_id, repository, name, path=None, state=None, conn=N
         conn = get_connection()
         should_close = True
 
-    max_retries = 3
-    for attempt in range(max_retries):
-        try:
-            cursor = conn.cursor()
-            cursor.execute('''
-                INSERT INTO workflows (id, repository, name, path, state)
-                VALUES (?, ?, ?, ?, ?)
-                ON CONFLICT(id) DO UPDATE SET
-                    repository = excluded.repository,
-                    name = excluded.name,
-                    path = excluded.path,
-                    state = excluded.state
-            ''', (workflow_id, repository, name, path, state))
+    try:
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO workflows (id, repository, name, path, state)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                repository = excluded.repository,
+                name = excluded.name,
+                path = excluded.path,
+                state = excluded.state
+        ''', (workflow_id, repository, name, path, state))
 
-            if should_close:
-                conn.commit()
-            return True
-        except sqlite3.OperationalError as e:
-            if "database is locked" in str(e) and attempt < max_retries - 1:
-                logger.warning(f"Database locked, retrying in {2 ** attempt} seconds... (attempt {attempt + 1}/{max_retries})")
-                time.sleep(2 ** attempt)  # Exponential backoff
-                continue
-            else:
-                if should_close:
-                    conn.rollback()
-                raise
-        except Exception as e:
+        if should_close:
+            conn.commit()
+        return True
+    except sqlite3.OperationalError as e:
+        if "database is locked" in str(e):
+            logger.warning(f"Database locked for workflow {workflow_id}, skipping...")
+            return False
+        else:
             if should_close:
                 conn.rollback()
             raise
-        finally:
-            if should_close:
-                conn.close()
-    
-    return False
+    except Exception as e:
+        if should_close:
+            conn.rollback()
+        raise
+    finally:
+        if should_close:
+            conn.close()
 
 
 def insert_run(run_id, workflow_id, run_number, commit_sha, branch, event, status, conclusion,
@@ -264,6 +250,7 @@ def insert_run(run_id, workflow_id, run_number, commit_sha, branch, event, statu
     conn.close()
 
 
+@retry_database_operation(max_retries=3)
 def insert_runs_batch(runs_data, conn=None):
     """Insert or update multiple workflow run records in a single transaction with idempotency.
 
@@ -284,18 +271,16 @@ def insert_runs_batch(runs_data, conn=None):
         conn = get_connection()
         should_close = True
 
-    max_retries = 3
-    for attempt in range(max_retries):
-        try:
-            cursor = conn.cursor()
-            # Use executemany for better performance with ON CONFLICT for upsert
-            cursor.executemany('''
-                INSERT INTO runs
-                (id, workflow_id, run_number, commit_sha, branch, event, status, conclusion,
-                 started_at, completed_at, duration_seconds, actor, url)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(id) DO UPDATE SET
-                    workflow_id = excluded.workflow_id,
+    try:
+        cursor = conn.cursor()
+        # Use executemany for better performance with ON CONFLICT for upsert
+        cursor.executemany('''
+            INSERT INTO runs
+            (id, workflow_id, run_number, commit_sha, branch, event, status, conclusion,
+             started_at, completed_at, duration_seconds, actor, url)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                workflow_id = excluded.workflow_id,
                 run_number = excluded.run_number,
                 commit_sha = excluded.commit_sha,
                 branch = excluded.branch,
@@ -309,27 +294,24 @@ def insert_runs_batch(runs_data, conn=None):
                 url = excluded.url
         ''', runs_data)
 
-            if should_close:
-                conn.commit()
-            return True
-        except sqlite3.OperationalError as e:
-            if "database is locked" in str(e) and attempt < max_retries - 1:
-                logger.warning(f"Database locked, retrying in {2 ** attempt} seconds... (attempt {attempt + 1}/{max_retries})")
-                time.sleep(2 ** attempt)  # Exponential backoff
-                continue
-            else:
-                if should_close:
-                    conn.rollback()
-                raise
-        except Exception as e:
+        if should_close:
+            conn.commit()
+        return True
+    except sqlite3.OperationalError as e:
+        if "database is locked" in str(e):
+            logger.warning(f"Database locked for batch insert, skipping {len(runs_data)} runs...")
+            return False
+        else:
             if should_close:
                 conn.rollback()
             raise
-        finally:
-            if should_close:
-                conn.close()
-    
-    return False
+    except Exception as e:
+        if should_close:
+            conn.rollback()
+        raise
+    finally:
+        if should_close:
+            conn.close()
 
 
 def get_workflows():

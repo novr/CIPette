@@ -15,6 +15,10 @@ from cipette.database import (
     get_metrics_by_repository,
     refresh_mttr_cache,
 )
+from cipette.logging_config import setup_logging
+
+# Initialize logging
+setup_logging()
 
 # Configuration
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -28,16 +32,6 @@ app = Flask(
     static_folder=str(BASE_DIR / 'static')
 )
 
-# Logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S',
-    handlers=[
-        logging.FileHandler('data/app.log'),
-        logging.StreamHandler()
-    ]
-)
 logger = logging.getLogger(__name__)
 
 
