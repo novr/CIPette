@@ -100,10 +100,14 @@ class GitHubDataCollector:
             return 0, 0  # Return counts for tracking
 
         # Get all workflows with pagination
-        workflows = repo.get_workflows()
-        workflow_count = workflows.totalCount
-        total_runs = 0
-        logger.info(f"Found {workflow_count} workflows")
+        try:
+            workflows = repo.get_workflows()
+            workflow_count = workflows.totalCount
+            total_runs = 0
+            logger.info(f"Found {workflow_count} workflows")
+        except GithubException as e:
+            logger.error(f"Error fetching workflows for repository {repo_name}: {e}")
+            return 0, 0
 
         # Use a single database connection for all workflow operations
         # Repository-level transaction: all or nothing
@@ -132,41 +136,47 @@ class GitHubDataCollector:
                         else:
                             # For full fetch, limit to MAX_WORKFLOW_RUNS
                             runs_paginated = workflow.get_runs()
-                            runs = list(runs_paginated[:MAX_WORKFLOW_RUNS])
+                            runs_list = list(runs_paginated)
+                            # Safely slice the list, handling empty lists
+                            runs = runs_list[:MAX_WORKFLOW_RUNS] if runs_list else []
 
                         logger.info(f"Found {len(runs)} runs for workflow {workflow_id}")
 
                         # Prepare batch data
                         runs_data = []
                         for run in runs:
-                            run_id = str(run.id)
-                            run_number = run.run_number
-                            commit_sha = run.head_sha
-                            branch = run.head_branch
-                            event = run.event
-                            status = run.status
-                            conclusion = run.conclusion
+                            try:
+                                run_id = str(run.id)
+                                run_number = run.run_number
+                                commit_sha = run.head_sha
+                                branch = run.head_branch
+                                event = run.event
+                                status = run.status
+                                conclusion = run.conclusion
 
-                            # Parse timestamps
-                            started_at = self.parse_datetime(run.run_started_at or run.created_at)
-                            completed_at = self.parse_datetime(run.updated_at if run.status == 'completed' else None)
+                                # Parse timestamps
+                                started_at = self.parse_datetime(run.run_started_at or run.created_at)
+                                completed_at = self.parse_datetime(run.updated_at if run.status == 'completed' else None)
 
-                            # Calculate duration in seconds
-                            duration_seconds = None
-                            if run.run_started_at and run.updated_at and run.status == 'completed':
-                                duration = run.updated_at - run.run_started_at
-                                duration_seconds = int(duration.total_seconds())
+                                # Calculate duration in seconds
+                                duration_seconds = None
+                                if run.run_started_at and run.updated_at and run.status == 'completed':
+                                    duration = run.updated_at - run.run_started_at
+                                    duration_seconds = int(duration.total_seconds())
 
-                            # Get actor
-                            actor = run.actor.login if run.actor else None
+                                # Get actor
+                                actor = run.actor.login if run.actor else None
 
-                            # Get URL
-                            url = run.html_url
+                                # Get URL
+                                url = run.html_url
 
-                            runs_data.append((
-                                run_id, workflow_id, run_number, commit_sha, branch, event,
-                                status, conclusion, started_at, completed_at, duration_seconds, actor, url
-                            ))
+                                runs_data.append((
+                                    run_id, workflow_id, run_number, commit_sha, branch, event,
+                                    status, conclusion, started_at, completed_at, duration_seconds, actor, url
+                                ))
+                            except (AttributeError, TypeError, ValueError) as e:
+                                logger.warning(f"Skipping malformed run data for workflow {workflow_id}: {e}")
+                                continue
 
                         # Batch insert all runs using shared connection
                         insert_runs_batch(runs_data, conn=conn)

@@ -20,8 +20,11 @@ def get_connection():
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM workflows")
     """
-    conn = sqlite3.connect(DATABASE_PATH)
+    conn = sqlite3.connect(DATABASE_PATH, timeout=30.0)
     conn.row_factory = sqlite3.Row  # Enable column access by name
+    # Enable WAL mode for better concurrency
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
     return conn
 
 
@@ -181,19 +184,26 @@ def insert_workflow(workflow_id, repository, name, path=None, state=None, conn=N
 
     cursor = conn.cursor()
 
-    cursor.execute('''
-        INSERT INTO workflows (id, repository, name, path, state)
-        VALUES (?, ?, ?, ?, ?)
-        ON CONFLICT(id) DO UPDATE SET
-            repository = excluded.repository,
-            name = excluded.name,
-            path = excluded.path,
-            state = excluded.state
-    ''', (workflow_id, repository, name, path, state))
+    try:
+        cursor.execute('''
+            INSERT INTO workflows (id, repository, name, path, state)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                repository = excluded.repository,
+                name = excluded.name,
+                path = excluded.path,
+                state = excluded.state
+        ''', (workflow_id, repository, name, path, state))
 
-    if should_close:
-        conn.commit()
-        conn.close()
+        if should_close:
+            conn.commit()
+    except Exception as e:
+        if should_close:
+            conn.rollback()
+        raise
+    finally:
+        if should_close:
+            conn.close()
 
 
 def insert_run(run_id, workflow_id, run_number, commit_sha, branch, event, status, conclusion,

@@ -153,6 +153,7 @@ name = "cipette"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "certifi" },
     { name = "flask" },
     { name = "pygithub" },
     { name = "python-dotenv" },
@@ -166,6 +167,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "certifi", specifier = ">=2025.8.3" },
     { name = "flask", specifier = ">=3.0.0" },
     { name = "pygithub", specifier = ">=2.1.1" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0" },

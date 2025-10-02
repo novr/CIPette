@@ -10,7 +10,7 @@ GITHUB_TOKEN = os.getenv('GITHUB_TOKEN')
 GITHUB_API_BASE_URL = 'https://api.github.com'
 
 # Database Configuration
-DATABASE_PATH = 'cicd_metrics.db'
+DATABASE_PATH = 'data/cicd_metrics.db'
 
 # Target Repositories (comma-separated list)
 # Example: 'owner/repo1,owner/repo2'
