@@ -19,9 +19,13 @@ from cipette.database import initialize_database, insert_runs_batch, insert_work
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
+    datefmt='%Y-%m-%d %H:%M:%S',
+    handlers=[
+        logging.FileHandler('data/collector.log'),
+        logging.StreamHandler()
+    ]
 )
 logger = logging.getLogger(__name__)
 
@@ -499,7 +503,9 @@ class GitHubDataCollector:
 
                 # Collect data using REST API (fallback for now)
                 start_time = datetime.now(UTC).isoformat()
+                logger.info(f"Starting data collection for {repo}...")
                 wf_count, run_count = self.collect_repository_data(repo, since=None)
+                logger.info(f"Completed data collection for {repo}: {wf_count} workflows, {run_count} runs")
                 total_workflows += wf_count
                 total_runs += run_count
 
