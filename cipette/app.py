@@ -10,6 +10,7 @@ from pathlib import Path
 
 from flask import Flask, render_template, request
 
+from cipette.config import Config
 from cipette.database import (
     get_connection,
     get_metrics_by_repository,
@@ -22,8 +23,6 @@ setup_logging()
 
 # Configuration
 BASE_DIR = Path(__file__).resolve().parent.parent
-SUCCESS_RATE_HIGH_THRESHOLD = 90
-SUCCESS_RATE_MEDIUM_THRESHOLD = 70
 
 # Flask app setup
 app = Flask(
@@ -73,7 +72,7 @@ def format_duration(seconds: float | None) -> str:
         >>> format_duration(None)
         'N/A'
     """
-    return _format_time(seconds, [('m', 60), ('s', 1)])
+    return _format_time(seconds, Config.TIME_UNITS[1:])  # minutes and seconds
 
 
 @app.template_filter('rate_class')
@@ -88,9 +87,9 @@ def rate_class(rate: float | None) -> str:
     """
     if rate is None:
         return 'low'
-    if rate >= SUCCESS_RATE_HIGH_THRESHOLD:
+    if rate >= Config.SUCCESS_RATE_HIGH_THRESHOLD:
         return 'high'
-    elif rate >= SUCCESS_RATE_MEDIUM_THRESHOLD:
+    elif rate >= Config.SUCCESS_RATE_MEDIUM_THRESHOLD:
         return 'medium'
     else:
         return 'low'
@@ -106,7 +105,7 @@ def format_mttr(seconds: float | None) -> str:
         >>> format_mttr(900)
         '15m'
     """
-    return _format_time(seconds, [('h', 3600), ('m', 60)])
+    return _format_time(seconds, Config.TIME_UNITS[:2])  # hours and minutes
 
 
 # Helper functions
@@ -210,11 +209,11 @@ def start_mttr_refresh_worker():
     """
     def worker():
         # Get refresh interval from environment variable
-        interval = int(os.getenv('MTTR_REFRESH_INTERVAL', '300'))
+        interval = Config.MTTR_REFRESH_INTERVAL
         logger.info(f"MTTR cache refresh worker starting (interval: {interval}s)")
 
         # Initial delay to let Flask app fully start
-        time.sleep(5)
+        time.sleep(Config.MTTR_WORKER_INITIAL_DELAY)
 
         while True:
             try:
@@ -236,8 +235,8 @@ def start_mttr_refresh_worker():
 def main():
     """Main entry point for Flask application."""
     debug = os.getenv('FLASK_DEBUG', 'False').lower() == 'true'
-    host = os.getenv('FLASK_HOST', '127.0.0.1')
-    port = int(os.getenv('FLASK_PORT', '5000'))
+    host = os.getenv('FLASK_HOST', Config.WEB_HOST)
+    port = int(os.getenv('FLASK_PORT', Config.WEB_DEFAULT_PORT))
 
     logger.info("Starting CIPette web dashboard...")
     logger.info(f"Access dashboard at: http://{host}:{port}")

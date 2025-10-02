@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 class DatabaseConnection:
     """Database connection wrapper with proper context manager support."""
     
-    def __init__(self, path: str, timeout: float = 30.0):
+    def __init__(self, path: str, timeout: float = None):
         """Initialize database connection.
         
         Args:
@@ -23,7 +23,7 @@ class DatabaseConnection:
             timeout: Connection timeout in seconds
         """
         self.path = path
-        self.timeout = timeout
+        self.timeout = timeout or Config.DATABASE_DEFAULT_TIMEOUT
         self.conn = None
     
     def __enter__(self) -> sqlite3.Connection:
@@ -32,10 +32,10 @@ class DatabaseConnection:
         self.conn.row_factory = sqlite3.Row  # Enable column access by name
         
         # Configure SQLite for better performance and concurrency
-        self.conn.execute("PRAGMA journal_mode=WAL")
-        self.conn.execute("PRAGMA synchronous=NORMAL")
+        self.conn.execute(f"PRAGMA journal_mode={Config.SQLITE_JOURNAL_MODE}")
+        self.conn.execute(f"PRAGMA synchronous={Config.SQLITE_SYNCHRONOUS}")
         self.conn.execute(f"PRAGMA busy_timeout={Config.DATABASE_BUSY_TIMEOUT}")
-        self.conn.execute("PRAGMA temp_store=MEMORY")
+        self.conn.execute(f"PRAGMA temp_store={Config.SQLITE_TEMP_STORE}")
         self.conn.execute(f"PRAGMA cache_size={Config.DATABASE_CACHE_SIZE}")
         
         return self.conn
@@ -444,7 +444,7 @@ def _build_metrics_query(repository=None, days=None):
         ROUND(AVG(r.duration_seconds), 2) as avg_duration_seconds,
         ROUND(
             CAST(SUM(CASE WHEN r.conclusion = 'success' THEN 1 ELSE 0 END) AS FLOAT) /
-            NULLIF(SUM(CASE WHEN r.conclusion IN ('success', 'failure') THEN 1 ELSE 0 END), 0) * 100,
+            NULLIF(SUM(CASE WHEN r.conclusion IN ('success', 'failure') THEN 1 ELSE 0 END), 0) * {Config.DATABASE_SUCCESS_RATE_MULTIPLIER},
             2
         ) as success_rate,
         MIN(r.started_at) as first_run,
@@ -571,7 +571,7 @@ def get_metrics_by_repository(repository=None, days=None):
         List of dicts with metrics for each repository/workflow combination
     """
     # Calculate cache key (invalidates every minute)
-    cache_key = int(time.time() / 60)
+    cache_key = int(time.time() / Config.DATABASE_CACHE_TTL_SECONDS)
 
     # Get cached results
     cached_tuples = _get_metrics_cached(repository, days, cache_key)

@@ -18,6 +18,9 @@ class Config:
     DATABASE_TIMEOUT = 60.0
     DATABASE_BUSY_TIMEOUT = 10000  # 10 seconds
     DATABASE_CACHE_SIZE = 1000
+    DATABASE_DEFAULT_TIMEOUT = 30.0  # Default connection timeout
+    DATABASE_SUCCESS_RATE_MULTIPLIER = 100  # For percentage calculation
+    DATABASE_CACHE_TTL_SECONDS = 60  # Cache TTL in seconds
     
     # GitHub API configuration
     GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
@@ -26,6 +29,8 @@ class Config:
     GITHUB_API_TIMEOUT = 30
     GITHUB_RATE_LIMIT_WARNING_THRESHOLD = 100
     GITHUB_RATE_LIMIT_STOP_THRESHOLD = 10
+    GITHUB_RATE_LIMIT_DISPLAY_INTERVAL = 60  # Display countdown every 60 seconds
+    GITHUB_RATE_LIMIT_DISPLAY_THRESHOLD = 10  # Display countdown when <= 10 seconds
     
     # Data collection configuration
     MAX_WORKFLOW_RUNS = int(os.getenv("MAX_WORKFLOW_RUNS", "10"))
@@ -38,13 +43,16 @@ class Config:
     WEB_HOST = "127.0.0.1"
     WEB_PORT = 5001
     WEB_DEBUG = True
+    WEB_DEFAULT_PORT = 5000  # Default Flask port
     MTTR_REFRESH_INTERVAL = int(os.getenv("MTTR_REFRESH_INTERVAL", "300"))  # 5 minutes
+    MTTR_WORKER_INITIAL_DELAY = 5  # Initial delay for MTTR worker in seconds
     
     # Logging configuration
     LOG_LEVEL = "INFO"
     LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     LOG_DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
     LOG_FILE = "data/cipette.log"
+    LOG_SEPARATOR_LENGTH = 60  # Length of separator line in logs
     
     # Target repositories
     TARGET_REPOSITORIES = os.getenv("TARGET_REPOSITORIES", "").split(",") if os.getenv("TARGET_REPOSITORIES") else [
@@ -92,6 +100,22 @@ class Config:
           }
         }
     """
+    
+    # Time formatting constants
+    TIME_UNITS = [
+        ('h', 3600),  # hours
+        ('m', 60),    # minutes
+        ('s', 1)      # seconds
+    ]
+    
+    # Success rate thresholds
+    SUCCESS_RATE_HIGH_THRESHOLD = 90
+    SUCCESS_RATE_MEDIUM_THRESHOLD = 70
+    
+    # SQLite PRAGMA settings
+    SQLITE_JOURNAL_MODE = "WAL"
+    SQLITE_SYNCHRONOUS = "NORMAL"
+    SQLITE_TEMP_STORE = "MEMORY"
     
     @classmethod
     def validate(cls) -> None:

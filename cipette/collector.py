@@ -127,7 +127,7 @@ class GitHubDataCollector:
         # Show last run info
         last_run = self.get_last_run_info()
         if last_run:
-            logger.info("=" * 60)
+            logger.info("=" * Config.LOG_SEPARATOR_LENGTH)
             logger.info("Last data collection:")
             repos_info = last_run.get('repositories', {})
             if isinstance(repos_info, dict):
@@ -137,7 +137,7 @@ class GitHubDataCollector:
             else:
                 # Old format compatibility
                 logger.info(f"  Repositories: {', '.join(repos_info)}")
-            logger.info("=" * 60)
+            logger.info("=" * Config.LOG_SEPARATOR_LENGTH)
 
         # Initialize database
         initialize_database()

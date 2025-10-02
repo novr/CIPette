@@ -47,7 +47,7 @@ class GitHubClient:
         reset_time_str = reset_time_local.strftime('%Y-%m-%d %H:%M:%S %Z')
         logger.info(f"API Rate Limit: {core.remaining}/{core.limit} (resets at {reset_time_str})")
         
-        if core.remaining < 100:
+        if core.remaining < Config.GITHUB_RATE_LIMIT_WARNING_THRESHOLD:
             logger.warning(f"Only {core.remaining} API calls remaining!")
         
         return core.remaining
@@ -70,12 +70,12 @@ class GitHubClient:
         reset_time_local = reset_time.astimezone()
         reset_time_str = reset_time_local.strftime('%Y-%m-%d %H:%M:%S %Z')
         logger.warning(f"Rate limit exceeded! Waiting until {reset_time_str}")
-        logger.info(f"Waiting {wait_seconds} seconds ({wait_seconds//60} minutes {wait_seconds%60} seconds)...")
+        logger.info(f"Waiting {wait_seconds} seconds ({wait_seconds//Config.GITHUB_RATE_LIMIT_DISPLAY_INTERVAL} minutes {wait_seconds%Config.GITHUB_RATE_LIMIT_DISPLAY_INTERVAL} seconds)...")
         
         for remaining in range(wait_seconds, 0, -1):
-            if remaining % 60 == 0 or remaining <= 10:
-                minutes = remaining // 60
-                seconds = remaining % 60
+            if remaining % Config.GITHUB_RATE_LIMIT_DISPLAY_INTERVAL == 0 or remaining <= Config.GITHUB_RATE_LIMIT_DISPLAY_THRESHOLD:
+                minutes = remaining // Config.GITHUB_RATE_LIMIT_DISPLAY_INTERVAL
+                seconds = remaining % Config.GITHUB_RATE_LIMIT_DISPLAY_INTERVAL
                 logger.info(f"Rate limit reset in {minutes}m {seconds}s...")
             time.sleep(1)
             
@@ -107,7 +107,7 @@ class GitHubClient:
                 Config.GITHUB_GRAPHQL_ENDPOINT,
                 json=payload,
                 headers=headers,
-                timeout=30
+                timeout=Config.GITHUB_API_TIMEOUT
             )
             
             if response.status_code == 304:
