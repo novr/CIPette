@@ -25,11 +25,11 @@ This file provides guidance to Claude Code when working with this repository.
 ## Quick Start
 
 ```bash
-# Install
+# Install (no venv needed!)
 curl -LsSf https://astral.sh/uv/install.sh | sh
 git clone https://github.com/novr/CIPette
 cd CIPette
-uv sync
+uv sync  # Creates virtual environment automatically
 
 # Setup
 echo "GITHUB_TOKEN=your_token" > .env

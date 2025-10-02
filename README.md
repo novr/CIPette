@@ -19,10 +19,10 @@ Get insights from your CI/CD pipeline in 5 minutes, not 5 hours.
 # Install uv (fast Python package manager)
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# Clone and setup
+# Clone and setup (no venv needed!)
 git clone https://github.com/novr/CIPette
 cd CIPette
-uv sync
+uv sync  # Creates virtual environment automatically
 ```
 
 ### 2. Configure
@@ -53,6 +53,7 @@ uv run cipette-web
 
 - Python 3.11+
 - GitHub token with `repo` scope
+- uv (no venv needed - handles virtual environment automatically)
 - 5 minutes of your time
 
 ## How It Works

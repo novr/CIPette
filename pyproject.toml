@@ -9,15 +9,21 @@ description = "CI/CD Insights Dashboard - Collect and visualize GitHub Actions w
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [
-    {name = "Your Name", email = "your.email@example.com"}
+    {name = "novr", email = "novr@example.com"}
 ]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Quality Assurance",
+    "Topic :: Software Development :: Testing",
+    "Topic :: System :: Monitoring",
 ]
 
 dependencies = [
@@ -25,12 +31,16 @@ dependencies = [
     "flask>=3.0.0",
     "PyGithub>=2.1.1",
     "python-dotenv>=1.0.0",
+    "requests>=2.32.5",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0.0",
     "ruff>=0.1.0",
+]
+test = [
+    "pytest>=8.0.0",
 ]
 
 [project.scripts]
@@ -46,8 +56,8 @@ line-length = 120
 target-version = "py311"
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "N"]
-ignore = []
+select = ["E", "F", "W", "I", "N", "B", "C4", "UP"]
+ignore = ["E501"]  # Line too long (handled by formatter)
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
