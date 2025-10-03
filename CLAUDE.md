@@ -1,81 +1,83 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code when working with this repository.
+AI開発ガイド: CIPetteプロジェクトでの作業指針
 
-## Project Overview
+## プロジェクト概要
 
-**CIPette** is a simple CI/CD dashboard that collects GitHub Actions data and shows basic metrics.
+**CIPette** - GitHub ActionsのCI/CDメトリクスを可視化するシンプルなダッシュボード
 
-**Goal**: Get CI/CD insights in 5 minutes, not 5 hours.
+**目標**: 5分でCI/CDインサイトを取得（5時間ではなく）
 
-## What It Does
+> 📖 **ユーザー向け情報は[README.md](README.md)を参照**
 
-- Fetches GitHub Actions workflow data
-- Calculates 4 key metrics: Duration, Success Rate, Throughput, MTTR
-- Shows data in a simple web table
-- Filters by time period and repository
+## コア機能
 
-## Tech Stack
+- GitHub Actionsワークフローデータの収集
+- 4つの主要メトリクス計算: Duration, Success Rate, Throughput, MTTR
+- シンプルなWebテーブル表示
+- 期間・リポジトリ別フィルタリング
 
-- **Python 3.11+** with Flask
-- **SQLite** database (no setup required)
-- **uv** for package management
-- **PyGithub** for GitHub API
+## 技術構成
 
-## Quick Start
+- **Python 3.11+** + Flask
+- **SQLite** データベース
+- **uv** パッケージ管理
+- **PyGithub** GitHub API
 
-```bash
-# Install (no venv needed!)
-curl -LsSf https://astral.sh/uv/install.sh | sh
-git clone https://github.com/novr/CIPette
-cd CIPette
-uv sync  # Creates virtual environment automatically
-
-# Run
-uv run cipette-collect  # Get data
-uv run cipette-web      # View dashboard
-```
-
-## Project Structure
+## ファイル構成
 
 ```
 cipette/
-├── app.py          # Web dashboard
-├── collector.py    # GitHub data collection
-├── database.py     # SQLite operations
-└── config.py       # Settings
+├── app.py              # Webダッシュボード（Flask）
+├── collector.py         # GitHubデータ収集
+├── database.py          # SQLite操作
+├── config.py            # 設定管理
+├── data_processor.py    # メトリクス計算
+├── etag_manager.py      # ETagキャッシュ
+├── github_client.py     # GitHub APIクライアント
+├── retry.py             # リトライロジック
+├── sql_security.py      # SQLインジェクション対策
+└── error_handling.py    # エラーハンドリング
 ```
 
-## Key Features
+## AI作業指針
 
-- **Simple**: No complex setup, just run and go
-- **Fast**: Cached metrics for quick loading
-- **Focused**: Only essential CI/CD metrics
-- **Local**: No cloud dependencies
+### コード品質
+- **必ずリンター実行**: `uv run ruff check cipette/ tests/ --fix`
+- 修正後は `uv run ruff check cipette/ tests/` で確認
+- 型ヒントを一貫して使用
+- PEP 8スタイルガイドラインに従う
 
-## Development Guidelines
+### 重要な実装ポイント
 
-### Code Quality
-- **Always run linter before commit**: `uv run ruff check cipette/ tests/ --fix`
-- Use `--unsafe-fixes` if needed: `uv run ruff check cipette/ tests/ --fix --unsafe-fixes`
-- Ensure all checks pass: `uv run ruff check cipette/ tests/`
-- Follow PEP 8 style guidelines
-- Use type hints consistently
+#### データベース操作
+- `DatabaseConnection`コンテキストマネージャーを使用
+- `sql_security.py`でSQLインジェクション対策済み
+- `retry.py`でリトライロジック実装
 
-### Commit Process
-1. Make code changes
-2. Run linter: `uv run ruff check cipette/ tests/ --fix`
-3. Fix any remaining issues manually
-4. Verify all checks pass: `uv run ruff check cipette/ tests/`
-5. Commit with descriptive message
+#### GitHub API統合
+- レート制限は自動的にリトライロジックで処理
+- ETagキャッシュで効率的なデータ取得
+- エラーハンドリングとログ出力
 
-## Success Criteria
+#### パフォーマンス
+- MTTR計算はキャッシュ済み
+- メトリクスはメモリキャッシュ（TTL付き）
+- データベース接続プール使用
 
-- [x] Collects GitHub Actions data
-- [x] Shows metrics in web interface
-- [x] Filters work
-- [x] Fast performance
-- [x] Code quality maintained with linting
-- [ ] Useful insights from real data
+### テスト実行
+- `uv run pytest` でテスト実行
+- `tests/`ディレクトリにユニットテスト
 
-**Philosophy**: Ship working software fast, optimize later.
+## 現在の実装状況
+
+- [x] GitHub Actionsデータ収集
+- [x] Webインターフェース表示
+- [x] フィルタリング機能
+- [x] 高速パフォーマンス
+- [x] コード品質維持
+- [x] エラーハンドリング・リトライ
+- [x] SQLインジェクション対策
+- [ ] 実データからの有用なインサイト
+
+**方針**: 動作するソフトウェアを素早くリリース、最適化は後で
