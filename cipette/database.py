@@ -8,7 +8,6 @@ from functools import lru_cache
 
 from cipette.config import Config
 from cipette.retry import retry_database_operation
-from cipette.sql_security import SafePragmaSet, ValidateQueryParams
 
 logger = logging.getLogger(__name__)
 
@@ -32,14 +31,13 @@ class DatabaseConnection:
         self.conn = sqlite3.connect(self.path, timeout=self.timeout)
         self.conn.row_factory = sqlite3.Row  # Enable column access by name
 
-        # Configure SQLite for better performance and concurrency (with injection protection)
-        SafePragmaSet.safe_pragma_set(self.conn.cursor(), 'journal_mode', Config.SQLITE_JOURNAL_MODE)
-        SafePragmaSet.safe_pragma_set(self.conn.cursor(), 'synchronous', Config.SQLITE_SYNCHRONOUS)
-        SafePragmaSet.safe_pragma_set(
-            self.conn.cursor(), 'busy_timeout', Config.DATABASE_BUSY_TIMEOUT
-        )
-        SafePragmaSet.safe_pragma_set(self.conn.cursor(), 'temp_store', Config.SQLITE_TEMP_STORE)
-        SafePragmaSet.safe_pragma_set(self.conn.cursor(), 'cache_size', Config.DATABASE_CACHE_SIZE)
+        # Configure SQLite for better performance and concurrency
+        cursor = self.conn.cursor()
+        cursor.execute(f'PRAGMA journal_mode = {Config.SQLITE_JOURNAL_MODE}')
+        cursor.execute(f'PRAGMA synchronous = {Config.SQLITE_SYNCHRONOUS}')
+        cursor.execute(f'PRAGMA busy_timeout = {Config.DATABASE_BUSY_TIMEOUT}')
+        cursor.execute(f'PRAGMA temp_store = {Config.SQLITE_TEMP_STORE}')
+        cursor.execute(f'PRAGMA cache_size = {Config.DATABASE_CACHE_SIZE}')
 
         return self.conn
 
@@ -288,9 +286,6 @@ def insert_workflow(
         state: Workflow state
         conn: Optional database connection (for batch operations)
     """
-    # Validate input parameters for SQL injection prevention
-    if not ValidateQueryParams.validate_query_params((workflow_id, repository, name, path, state)):
-        raise ValueError('Invalid parameters detected - potential SQL injection')
     if conn is not None:
         # Use provided connection (for batch operations)
         try:
@@ -386,24 +381,6 @@ def insert_run(
     url: str | None,
 ) -> None:
     """Insert or update a workflow run record with idempotency."""
-    # Validate input parameters for SQL injection prevention
-    params = (
-        run_id,
-        workflow_id,
-        run_number,
-        commit_sha,
-        branch,
-        event,
-        status,
-        conclusion,
-        started_at,
-        completed_at,
-        duration_seconds,
-        actor,
-        url,
-    )
-    if not ValidateQueryParams.validate_query_params(params):
-        raise ValueError('Invalid parameters detected - potential SQL injection')
     with get_connection() as conn:
         cursor = conn.cursor()
 
@@ -491,10 +468,6 @@ def insert_runs_batch(
     if not runs_data:
         return
 
-    # Validate all batch data for SQL injection prevention
-    for run_data in runs_data:
-        if not ValidateQueryParams.validate_query_params(run_data):
-            raise ValueError('Invalid batch data detected - potential SQL injection')
 
     if conn is not None:
         # Use provided connection (for batch operations)
@@ -781,9 +754,6 @@ def _build_metrics_query(
     Returns:
         Tuple of (query_string, params_list)
     """
-    # Validate input parameters for SQL injection prevention
-    if repository and not ValidateQueryParams.validate_query_params((repository,)):
-        raise ValueError('Invalid repository parameter - potential SQL injection')
 
     if days and (not isinstance(days, int) or days <= 0):
         raise ValueError('Invalid days parameter - must be positive integer')
