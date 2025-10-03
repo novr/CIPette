@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 class DatabaseConnection:
     """Database connection wrapper with proper context manager support."""
 
-    def __init__(self, path: str, timeout: float = None):
+    def __init__(self, path: str, timeout: float | None = None):
         """Initialize database connection.
 
         Args:
@@ -41,7 +41,7 @@ class DatabaseConnection:
 
         return self.conn
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, exc_type: type[BaseException] | None, exc_val: BaseException | None, exc_tb: object | None) -> None:
         """Exit context manager and handle connection cleanup."""
         if self.conn:
             if exc_type is not None:
@@ -72,7 +72,7 @@ def get_connection() -> Generator[sqlite3.Connection]:
         yield conn
 
 
-def initialize_database():
+def initialize_database() -> None:
     """Create database tables if they don't exist."""
     with get_connection() as conn:
         cursor = conn.cursor()
@@ -273,7 +273,7 @@ def initialize_database():
 
 
 @retry_database_operation(max_retries=3)
-def insert_workflow(workflow_id, repository, name, path=None, state=None, conn=None):
+def insert_workflow(workflow_id: str, repository: str, name: str, path: str | None = None, state: str | None = None, conn: sqlite3.Connection | None = None) -> bool:
     """Insert or update a workflow record with idempotency.
 
     Args:
@@ -348,8 +348,8 @@ def insert_workflow(workflow_id, repository, name, path=None, state=None, conn=N
             raise
 
 
-def insert_run(run_id, workflow_id, run_number, commit_sha, branch, event, status, conclusion,
-               started_at, completed_at, duration_seconds, actor, url):
+def insert_run(run_id: str, workflow_id: str, run_number: int, commit_sha: str | None, branch: str | None, event: str | None, status: str, conclusion: str | None,
+               started_at: str | None, completed_at: str | None, duration_seconds: int | None, actor: str | None, url: str | None) -> None:
     """Insert or update a workflow run record with idempotency."""
     # Validate input parameters for SQL injection prevention
     params = (run_id, workflow_id, run_number, commit_sha, branch, event, status,
@@ -408,7 +408,7 @@ def insert_run(run_id, workflow_id, run_number, commit_sha, branch, event, statu
 
 
 @retry_database_operation(max_retries=3)
-def insert_runs_batch(runs_data, conn=None):
+def insert_runs_batch(runs_data: list[tuple], conn: sqlite3.Connection | None = None) -> bool:
     """Insert or update multiple workflow run records in a single transaction with idempotency.
 
     Args:
@@ -553,7 +553,7 @@ def insert_runs_batch(runs_data, conn=None):
             raise
 
 
-def get_workflows():
+def get_workflows() -> list[sqlite3.Row]:
     """Retrieve all workflows."""
     with get_connection() as conn:
         cursor = conn.cursor()
@@ -562,7 +562,7 @@ def get_workflows():
         return workflows
 
 
-def get_runs(workflow_id=None, limit=None, repository=None, status=None, conclusion=None):
+def get_runs(workflow_id: str | None = None, limit: int | None = None, repository: str | None = None, status: str | None = None, conclusion: str | None = None) -> list[sqlite3.Row]:
     """Retrieve workflow runs with various filters.
 
     Args:
@@ -611,7 +611,7 @@ def get_runs(workflow_id=None, limit=None, repository=None, status=None, conclus
         return runs
 
 
-def _build_metrics_query(repository=None, days=None):
+def _build_metrics_query(repository: str | None = None, days: int | None = None) -> tuple[str, list[str]]:
     """Build unified metrics query with optional filters.
 
     Args:
@@ -711,7 +711,7 @@ def _build_metrics_query(repository=None, days=None):
 
 # Internal function with TTL-based caching
 @lru_cache(maxsize=128)
-def _get_metrics_cached(repository, days, cache_key):
+def _get_metrics_cached(repository: str | None, days: int | None, cache_key: str) -> list[sqlite3.Row]:
     """Internal cached version of metrics retrieval.
 
     Args:
@@ -751,7 +751,7 @@ def _get_metrics_cached(repository, days, cache_key):
         return tuple(tuple(m.items()) for m in metrics)
 
 
-def get_metrics_by_repository(repository=None, days=None):
+def get_metrics_by_repository(repository: str | None = None, days: int | None = None) -> list[dict[str, object]]:
     """Get CI/CD metrics from view with MTTR (cached for 1 minute).
 
     Args:
@@ -771,7 +771,7 @@ def get_metrics_by_repository(repository=None, days=None):
     return [dict(items) for items in cached_tuples]
 
 
-def calculate_mttr(workflow_id=None, repository=None, days=None):
+def calculate_mttr(workflow_id: str | None = None, repository: str | None = None, days: int | None = None) -> float | None:
     """Calculate Mean Time To Recovery (MTTR).
 
     MTTR = Average time from a failure completion to the next success completion.
@@ -846,7 +846,7 @@ def calculate_mttr(workflow_id=None, repository=None, days=None):
         return round(total_seconds / count, 2) if count > 0 else None
 
 
-def refresh_mttr_cache():
+def refresh_mttr_cache() -> None:
     """Refresh MTTR cache for all workflows (background job).
 
     This function:
@@ -915,7 +915,7 @@ def refresh_mttr_cache():
         raise
 
 
-def clear_mttr_cache():
+def clear_mttr_cache() -> None:
     """Clear all MTTR cache entries.
 
     Useful for:

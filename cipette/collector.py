@@ -25,32 +25,32 @@ class GitHubDataCollector:
         self.data_processor = DataProcessor(Config.MAX_WORKFLOW_RUNS)
         self.etag_manager = ETagManager(Config.CACHE_FILE)
 
-    def check_rate_limit(self):
+    def check_rate_limit(self) -> dict[str, int]:
         """Check and display current GitHub API rate limit status."""
         return self.github_client.check_rate_limit()
 
-    def wait_for_rate_limit_reset(self):
+    def wait_for_rate_limit_reset(self) -> None:
         """Wait for rate limit reset and display local time countdown."""
         self.github_client.wait_for_rate_limit_reset()
 
-    def get_last_run_info(self):
+    def get_last_run_info(self) -> dict[str, object] | None:
         """Read last run information from file."""
         return self.etag_manager.get_last_run_info()
 
-    def get_etag_for_repo(self, repo_name):
+    def get_etag_for_repo(self, repo_name: str) -> str | None:
         """Get ETag for a specific repository."""
         return self.etag_manager.get_etag_for_repo(repo_name)
 
-    def save_etag_for_repo(self, repo_name, etag, timestamp):
+    def save_etag_for_repo(self, repo_name: str, etag: str, timestamp: str) -> None:
         """Save ETag for a specific repository."""
         self.etag_manager.save_etag_for_repo(repo_name, etag, timestamp)
 
-    def make_graphql_request(self, query, variables, etag=None):
+    def make_graphql_request(self, query: str, variables: dict[str, object], etag: str | None = None) -> tuple[dict[str, object], str]:
         """Make a GraphQL request to GitHub API with optional ETag."""
         return self.github_client.make_graphql_request(query, variables, etag)
 
     @retry_api_call(max_retries=3)
-    def collect_repository_data_graphql(self, repo_name, etag=None):
+    def collect_repository_data_graphql(self, repo_name: str, etag: str | None = None) -> dict[str, object]:
         """Collect repository data using GraphQL API."""
         logger.info(f"Fetching data for {repo_name} using GraphQL...")
         data, new_etag = self.github_client.get_workflows_graphql(repo_name, etag)
@@ -68,7 +68,7 @@ class GitHubDataCollector:
 
         return workflow_count, total_runs, new_etag
 
-    def save_last_run_info(self, repo_data):
+    def save_last_run_info(self, repo_data: dict[str, object]) -> None:
         """Save last run information to file.
 
         Args:
@@ -77,7 +77,7 @@ class GitHubDataCollector:
         self.etag_manager.save_last_run_info(repo_data)
 
     @retry_api_call(max_retries=3)
-    def collect_repository_data(self, repo_name, since=None):
+    def collect_repository_data(self, repo_name: str, since: str | None = None) -> dict[str, object]:
         """Collect all workflow and run data for a repository with idempotency.
 
         Args:
@@ -111,7 +111,7 @@ class GitHubDataCollector:
 
         return workflow_count, total_runs
 
-    def collect_all_data(self):
+    def collect_all_data(self) -> None:
         """Collect data for all configured repositories."""
         if not Config.GITHUB_TOKEN:
             logger.error("GITHUB_TOKEN not found in environment variables")
@@ -203,7 +203,7 @@ class GitHubDataCollector:
         self.save_last_run_info(repo_timestamps)
 
 
-def main():
+def main() -> None:
     """Main entry point for the data collector."""
     collector = GitHubDataCollector()
     collector.collect_all_data()

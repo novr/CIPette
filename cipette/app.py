@@ -135,7 +135,7 @@ def get_available_repositories() -> list[str]:
 
 # Routes
 @app.route('/')
-def dashboard():
+def dashboard() -> str:
     """Main dashboard view with metrics and filters.
 
     Query Parameters:
@@ -182,7 +182,7 @@ def dashboard():
 
 # Error handlers
 @app.errorhandler(404)
-def not_found(error):
+def not_found(error: Exception) -> tuple[str, int]:
     """Handle 404 errors."""
     try:
         return render_template('error.html', error_message="Page not found"), 404
@@ -191,7 +191,7 @@ def not_found(error):
 
 
 @app.errorhandler(500)
-def internal_error(error):
+def internal_error(error: Exception) -> tuple[str, int]:
     """Handle 500 errors."""
     logger.error(f"Internal error: {error}", exc_info=True)
     try:
@@ -201,13 +201,13 @@ def internal_error(error):
 
 
 # Background worker for MTTR cache refresh
-def start_mttr_refresh_worker():
+def start_mttr_refresh_worker() -> None:
     """Start background thread to periodically refresh MTTR cache.
 
     Refresh interval is controlled by MTTR_REFRESH_INTERVAL environment variable.
     Default: 300 seconds (5 minutes)
     """
-    def worker():
+    def worker() -> None:
         # Get refresh interval from environment variable
         interval = Config.MTTR_REFRESH_INTERVAL
         logger.info(f"MTTR cache refresh worker starting (interval: {interval}s)")
@@ -232,7 +232,7 @@ def start_mttr_refresh_worker():
 
 
 # Main entry point
-def main():
+def main() -> None:
     """Main entry point for Flask application."""
     debug = os.getenv('FLASK_DEBUG', 'False').lower() == 'true'
     host = os.getenv('FLASK_HOST', Config.WEB_HOST)

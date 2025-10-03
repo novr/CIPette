@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 class SchemaMigrator:
     """Handles database schema migrations and normalization."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize schema migrator."""
         self.current_version = self._get_current_version()
         self.target_version = 2  # Normalized schema version

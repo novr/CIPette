@@ -4,7 +4,7 @@ import logging
 from pathlib import Path
 
 
-def setup_logging():
+def setup_logging() -> None:
     """Set up logging configuration for the entire application."""
     # Create data directory if it doesn't exist
     data_dir = Path("data")

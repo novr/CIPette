@@ -25,7 +25,7 @@ def retry_on_exception(
     """
     def decorator(func: Callable) -> Callable:
         @wraps(func)
-        def wrapper(*args, **kwargs):
+        def wrapper(*args: object, **kwargs: object) -> object:
             last_exception = None
             current_delay = delay
 
@@ -52,7 +52,7 @@ def retry_on_exception(
     return decorator
 
 
-def retry_database_operation(max_retries: int = 3):
+def retry_database_operation(max_retries: int = 3) -> Callable:
     """Decorator specifically for database operations with database lock handling."""
     return retry_on_exception(
         max_retries=max_retries,
@@ -62,7 +62,7 @@ def retry_database_operation(max_retries: int = 3):
     )
 
 
-def retry_api_call(max_retries: int = 3):
+def retry_api_call(max_retries: int = 3) -> Callable:
     """Decorator specifically for API calls with rate limit handling."""
     return retry_on_exception(
         max_retries=max_retries,

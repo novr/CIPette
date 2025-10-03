@@ -49,7 +49,7 @@ class GitHubClient:
 
         return core.remaining
 
-    def wait_for_rate_limit_reset(self):
+    def wait_for_rate_limit_reset(self) -> None:
         """Wait for rate limit reset if exceeded."""
         rate_limit = self.github.get_rate_limit()
         core = rate_limit.resources.core
@@ -126,7 +126,7 @@ class GitHubClient:
             logger.error(f"GraphQL request error: {e}")
             return None, None
 
-    def get_repository(self, repo_name: str):
+    def get_repository(self, repo_name: str) -> object:
         """Get repository object.
 
         Args:
