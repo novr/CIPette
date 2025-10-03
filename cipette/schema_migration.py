@@ -4,6 +4,7 @@ import logging
 import sqlite3
 
 from cipette.database import get_connection
+from cipette.sql_security import safe_pragma_set
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +39,7 @@ class SchemaMigrator:
         """
         with get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute(f"PRAGMA user_version = {version}")
+            safe_pragma_set(cursor, 'user_version', version)
             conn.commit()
 
     def migrate_to_normalized_schema(self) -> None:

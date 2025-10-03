@@ -8,6 +8,7 @@ from functools import lru_cache
 
 from cipette.config import Config
 from cipette.retry import retry_database_operation
+from cipette.sql_security import safe_pragma_set, validate_query_params
 
 logger = logging.getLogger(__name__)
 
@@ -31,12 +32,12 @@ class DatabaseConnection:
         self.conn = sqlite3.connect(self.path, timeout=self.timeout)
         self.conn.row_factory = sqlite3.Row  # Enable column access by name
 
-        # Configure SQLite for better performance and concurrency
-        self.conn.execute(f"PRAGMA journal_mode={Config.SQLITE_JOURNAL_MODE}")
-        self.conn.execute(f"PRAGMA synchronous={Config.SQLITE_SYNCHRONOUS}")
-        self.conn.execute(f"PRAGMA busy_timeout={Config.DATABASE_BUSY_TIMEOUT}")
-        self.conn.execute(f"PRAGMA temp_store={Config.SQLITE_TEMP_STORE}")
-        self.conn.execute(f"PRAGMA cache_size={Config.DATABASE_CACHE_SIZE}")
+        # Configure SQLite for better performance and concurrency (with injection protection)
+        safe_pragma_set(self.conn.cursor(), 'journal_mode', Config.SQLITE_JOURNAL_MODE)
+        safe_pragma_set(self.conn.cursor(), 'synchronous', Config.SQLITE_SYNCHRONOUS)
+        safe_pragma_set(self.conn.cursor(), 'busy_timeout', Config.DATABASE_BUSY_TIMEOUT)
+        safe_pragma_set(self.conn.cursor(), 'temp_store', Config.SQLITE_TEMP_STORE)
+        safe_pragma_set(self.conn.cursor(), 'cache_size', Config.DATABASE_CACHE_SIZE)
 
         return self.conn
 
@@ -283,6 +284,9 @@ def insert_workflow(workflow_id, repository, name, path=None, state=None, conn=N
         state: Workflow state
         conn: Optional database connection (for batch operations)
     """
+    # Validate input parameters for SQL injection prevention
+    if not validate_query_params((workflow_id, repository, name, path, state)):
+        raise ValueError("Invalid parameters detected - potential SQL injection")
     if conn is not None:
         # Use provided connection (for batch operations)
         try:
@@ -347,6 +351,11 @@ def insert_workflow(workflow_id, repository, name, path=None, state=None, conn=N
 def insert_run(run_id, workflow_id, run_number, commit_sha, branch, event, status, conclusion,
                started_at, completed_at, duration_seconds, actor, url):
     """Insert or update a workflow run record with idempotency."""
+    # Validate input parameters for SQL injection prevention
+    params = (run_id, workflow_id, run_number, commit_sha, branch, event, status, 
+              conclusion, started_at, completed_at, duration_seconds, actor, url)
+    if not validate_query_params(params):
+        raise ValueError("Invalid parameters detected - potential SQL injection")
     with get_connection() as conn:
         cursor = conn.cursor()
 
@@ -413,6 +422,11 @@ def insert_runs_batch(runs_data, conn=None):
     """
     if not runs_data:
         return
+
+    # Validate all batch data for SQL injection prevention
+    for run_data in runs_data:
+        if not validate_query_params(run_data):
+            raise ValueError("Invalid batch data detected - potential SQL injection")
 
     if conn is not None:
         # Use provided connection (for batch operations)
@@ -607,6 +621,12 @@ def _build_metrics_query(repository=None, days=None):
     Returns:
         Tuple of (query_string, params_list)
     """
+    # Validate input parameters for SQL injection prevention
+    if repository and not validate_query_params((repository,)):
+        raise ValueError("Invalid repository parameter - potential SQL injection")
+    
+    if days and (not isinstance(days, int) or days <= 0):
+        raise ValueError("Invalid days parameter - must be positive integer")
     # Common metric aggregations (avoid duplication)
     metrics_select = '''
         COUNT(*) as total_runs,
