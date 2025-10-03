@@ -67,25 +67,42 @@ class GitHubDataCollector:
     @retry_api_call(max_retries=3)
     def collect_repository_data_graphql(
         self, repo_name: str, etag: str | None = None
-    ) -> dict[str, object]:
-        """Collect repository data using GraphQL API."""
-        logger.info(f'Fetching data for {repo_name} using GraphQL...')
-        data, new_etag = self.github_client.get_workflows_graphql(repo_name, etag)
+    ) -> tuple[int, int, str | None]:
+        """Collect repository data using GraphQL API.
+        
+        Args:
+            repo_name: Repository name in format 'owner/repo'
+            etag: Optional ETag for conditional request
+            
+        Returns:
+            Tuple of (workflow_count, total_runs, new_etag)
+            
+        Raises:
+            GitHubAPIError: If API request fails
+            DataProcessingError: If data processing fails
+        """
+        try:
+            logger.info(f'Fetching data for {repo_name} using GraphQL...')
+            data, new_etag = self.github_client.get_workflows_graphql(repo_name, etag)
 
-        if data is None:
-            if new_etag:
-                logger.info(f'No new data for {repo_name} (using cached ETag)')
-                return 0, 0, new_etag
-            else:
-                logger.error(f'Failed to fetch data for {repo_name}')
-                return 0, 0, None
+            if data is None:
+                if new_etag:
+                    logger.info(f'No new data for {repo_name} (using cached ETag)')
+                    return 0, 0, new_etag
+                else:
+                    logger.error(f'Failed to fetch data for {repo_name}')
+                    return 0, 0, None
 
-        # Process the data using DataProcessor
-        workflow_count, total_runs = self.data_processor.process_workflows_from_graphql(
-            data, repo_name
-        )
+            # Process the data using DataProcessor
+            workflow_count, total_runs = self.data_processor.process_workflows_from_graphql(
+                data, repo_name
+            )
 
-        return workflow_count, total_runs, new_etag
+            return workflow_count, total_runs, new_etag
+            
+        except Exception as e:
+            logger.error(f'Error collecting data for {repo_name}: {e}', exc_info=True)
+            raise
 
     def save_last_run_info(self, repo_data: dict[str, object]) -> None:
         """Save last run information to file.
@@ -188,12 +205,12 @@ class GitHubDataCollector:
         for repo in repos:
             try:
                 # Get ETag for this repo
-                # etag = self.get_etag_for_repo(repo)  # TODO: Implement ETag support
+                etag = self.get_etag_for_repo(repo)
 
-                # Collect data using REST API (fallback for now)
+                # Collect data using GraphQL API
                 start_time = datetime.now(UTC).isoformat()
                 logger.info(f'Starting data collection for {repo}...')
-                wf_count, run_count = self.collect_repository_data(repo, since=None)
+                wf_count, run_count, new_etag = self.collect_repository_data_graphql(repo, etag)
                 logger.info(
                     f'Completed data collection for {repo}: {wf_count} workflows, {run_count} runs'
                 )
@@ -203,7 +220,7 @@ class GitHubDataCollector:
                 # Record timestamp for this repo
                 repo_timestamps[repo] = {
                     'last_collected': start_time,
-                    'workflows_etag': None,
+                    'workflows_etag': new_etag,
                 }
 
                 # Check rate limit after each repository
@@ -216,8 +233,14 @@ class GitHubDataCollector:
                 self.wait_for_rate_limit_reset()
 
             except Exception as e:
-                logger.error(f'Unexpected error for {repo}: {e}')
+                logger.error(f'Unexpected error for {repo}: {e}', exc_info=True)
                 logger.info(f'Skipping {repo}, continuing with next repository...')
+                # Record failed collection attempt
+                repo_timestamps[repo] = {
+                    'last_collected': start_time,
+                    'workflows_etag': None,
+                    'error': str(e)
+                }
                 continue  # Try next repository
 
         logger.info('Data collection completed!')

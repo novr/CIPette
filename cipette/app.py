@@ -109,7 +109,7 @@ def format_mttr(seconds: float | None) -> str:
 
 
 # Helper functions
-@lru_cache(maxsize=1)
+@lru_cache(maxsize=128)
 def get_available_repositories() -> list[str]:
     """Get list of all repositories in database.
 
