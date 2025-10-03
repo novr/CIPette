@@ -35,19 +35,28 @@ class DatabaseConnection:
         # Configure SQLite for better performance and concurrency (with injection protection)
         safe_pragma_set(self.conn.cursor(), 'journal_mode', Config.SQLITE_JOURNAL_MODE)
         safe_pragma_set(self.conn.cursor(), 'synchronous', Config.SQLITE_SYNCHRONOUS)
-        safe_pragma_set(self.conn.cursor(), 'busy_timeout', Config.DATABASE_BUSY_TIMEOUT)
+        safe_pragma_set(
+            self.conn.cursor(), 'busy_timeout', Config.DATABASE_BUSY_TIMEOUT
+        )
         safe_pragma_set(self.conn.cursor(), 'temp_store', Config.SQLITE_TEMP_STORE)
         safe_pragma_set(self.conn.cursor(), 'cache_size', Config.DATABASE_CACHE_SIZE)
 
         return self.conn
 
-    def __exit__(self, exc_type: type[BaseException] | None, exc_val: BaseException | None, exc_tb: object | None) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: object | None,
+    ) -> None:
         """Exit context manager and handle connection cleanup."""
         if self.conn:
             if exc_type is not None:
                 # Exception occurred, rollback transaction
                 self.conn.rollback()
-                logger.error(f"Database transaction rolled back due to {exc_type.__name__}: {exc_val}")
+                logger.error(
+                    f'Database transaction rolled back due to {exc_type.__name__}: {exc_val}'
+                )
             else:
                 # No exception, commit transaction
                 self.conn.commit()
@@ -76,46 +85,46 @@ def initialize_database() -> None:
     """Create database tables if they don't exist."""
     with get_connection() as conn:
         cursor = conn.cursor()
-        logger.info(f"Database connection established: {Config.DATABASE_PATH}")
+        logger.info(f'Database connection established: {Config.DATABASE_PATH}')
 
         # Repositories table
-        cursor.execute('''
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS repositories (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT UNIQUE NOT NULL,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
-        ''')
+        """)
 
         # Actors table
-        cursor.execute('''
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS actors (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 login TEXT UNIQUE NOT NULL,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
-        ''')
+        """)
 
         # Events table
-        cursor.execute('''
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS events (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT UNIQUE NOT NULL,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
-        ''')
+        """)
 
         # Branches table
-        cursor.execute('''
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS branches (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT UNIQUE NOT NULL,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
-        ''')
+        """)
 
         # Workflows table (normalized)
-        cursor.execute('''
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS workflows (
                 id TEXT PRIMARY KEY,
                 repository_id INTEGER NOT NULL,
@@ -126,10 +135,10 @@ def initialize_database() -> None:
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (repository_id) REFERENCES repositories (id)
             )
-        ''')
+        """)
 
         # Workflow runs table (normalized)
-        cursor.execute('''
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS runs (
                 id TEXT PRIMARY KEY,
                 workflow_id TEXT NOT NULL,
@@ -151,51 +160,51 @@ def initialize_database() -> None:
                 FOREIGN KEY (event_id) REFERENCES events (id),
                 FOREIGN KEY (actor_id) REFERENCES actors (id)
             )
-        ''')
+        """)
 
         # Create indexes for faster queries
-        cursor.execute('''
+        cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_workflows_repository
             ON workflows (repository_id)
-        ''')
+        """)
 
-        cursor.execute('''
+        cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_runs_workflow_id
             ON runs (workflow_id)
-        ''')
+        """)
 
-        cursor.execute('''
+        cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_runs_status
             ON runs (status)
-        ''')
+        """)
 
-        cursor.execute('''
+        cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_runs_completed_at
             ON runs (completed_at)
-        ''')
+        """)
 
-        cursor.execute('''
+        cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_runs_conclusion
             ON runs (conclusion)
-        ''')
+        """)
 
-        cursor.execute('''
+        cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_runs_branch
             ON runs (branch_id)
-        ''')
+        """)
 
-        cursor.execute('''
+        cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_runs_event
             ON runs (event_id)
-        ''')
+        """)
 
-        cursor.execute('''
+        cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_runs_actor
             ON runs (actor_id)
-        ''')
+        """)
 
         # Metrics view for real-time calculation (normalized)
-        cursor.execute('''
+        cursor.execute("""
             CREATE VIEW IF NOT EXISTS workflow_metrics_view AS
             SELECT
                 repo.name as repository,
@@ -217,10 +226,10 @@ def initialize_database() -> None:
             LEFT JOIN runs r ON w.id = r.workflow_id
             WHERE r.status = 'completed'
             GROUP BY repo.name, w.id, w.name
-        ''')
+        """)
 
         # MTTR view for real-time calculation
-        cursor.execute('''
+        cursor.execute("""
         CREATE VIEW IF NOT EXISTS mttr_view AS
         SELECT
             r1.workflow_id,
@@ -237,10 +246,10 @@ def initialize_database() -> None:
             AND r1.status = 'completed'
             AND r2.completed_at IS NOT NULL
         GROUP BY r1.workflow_id
-        ''')
+        """)
 
         # MTTR cache table for background job computation
-        cursor.execute('''
+        cursor.execute("""
         CREATE TABLE IF NOT EXISTS mttr_cache (
             workflow_id TEXT PRIMARY KEY,
             mttr_seconds REAL,
@@ -248,20 +257,27 @@ def initialize_database() -> None:
             calculated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (workflow_id) REFERENCES workflows (id)
         )
-        ''')
+        """)
 
         # Index for cache staleness checks
-        cursor.execute('''
+        cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_mttr_cache_calculated
             ON mttr_cache (calculated_at)
-        ''')
+        """)
 
         conn.commit()
-    logger.info("Database initialized successfully.")
+    logger.info('Database initialized successfully.')
 
 
 @retry_database_operation(max_retries=3)
-def insert_workflow(workflow_id: str, repository: str, name: str, path: str | None = None, state: str | None = None, conn: sqlite3.Connection | None = None) -> bool:
+def insert_workflow(
+    workflow_id: str,
+    repository: str,
+    name: str,
+    path: str | None = None,
+    state: str | None = None,
+    conn: sqlite3.Connection | None = None,
+) -> bool:
     """Insert or update a workflow record with idempotency.
 
     Args:
@@ -274,21 +290,25 @@ def insert_workflow(workflow_id: str, repository: str, name: str, path: str | No
     """
     # Validate input parameters for SQL injection prevention
     if not validate_query_params((workflow_id, repository, name, path, state)):
-        raise ValueError("Invalid parameters detected - potential SQL injection")
+        raise ValueError('Invalid parameters detected - potential SQL injection')
     if conn is not None:
         # Use provided connection (for batch operations)
         try:
             cursor = conn.cursor()
             # Insert repository if not exists
-            cursor.execute('''
+            cursor.execute(
+                """
                 INSERT OR IGNORE INTO repositories (name) VALUES (?)
-            ''', (repository,))
+            """,
+                (repository,),
+            )
 
             # Get repository ID
             cursor.execute('SELECT id FROM repositories WHERE name = ?', (repository,))
             repo_id = cursor.fetchone()[0]
 
-            cursor.execute('''
+            cursor.execute(
+                """
                 INSERT INTO workflows (id, repository_id, name, path, state)
                 VALUES (?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
@@ -297,11 +317,15 @@ def insert_workflow(workflow_id: str, repository: str, name: str, path: str | No
                     path = excluded.path,
                     state = excluded.state,
                     updated_at = CURRENT_TIMESTAMP
-            ''', (workflow_id, repo_id, name, path, state))
+            """,
+                (workflow_id, repo_id, name, path, state),
+            )
             return True
         except sqlite3.OperationalError as e:
-            if "database is locked" in str(e):
-                logger.warning(f"Database locked for workflow {workflow_id}, skipping...")
+            if 'database is locked' in str(e):
+                logger.warning(
+                    f'Database locked for workflow {workflow_id}, skipping...'
+                )
                 return False
             raise
     else:
@@ -310,15 +334,21 @@ def insert_workflow(workflow_id: str, repository: str, name: str, path: str | No
             with get_connection() as conn:
                 cursor = conn.cursor()
                 # Insert repository if not exists
-                cursor.execute('''
+                cursor.execute(
+                    """
                     INSERT OR IGNORE INTO repositories (name) VALUES (?)
-                ''', (repository,))
+                """,
+                    (repository,),
+                )
 
                 # Get repository ID
-                cursor.execute('SELECT id FROM repositories WHERE name = ?', (repository,))
+                cursor.execute(
+                    'SELECT id FROM repositories WHERE name = ?', (repository,)
+                )
                 repo_id = cursor.fetchone()[0]
 
-                cursor.execute('''
+                cursor.execute(
+                    """
                     INSERT INTO workflows (id, repository_id, name, path, state)
                     VALUES (?, ?, ?, ?, ?)
                     ON CONFLICT(id) DO UPDATE SET
@@ -327,30 +357,62 @@ def insert_workflow(workflow_id: str, repository: str, name: str, path: str | No
                         path = excluded.path,
                         state = excluded.state,
                         updated_at = CURRENT_TIMESTAMP
-                ''', (workflow_id, repo_id, name, path, state))
+                """,
+                    (workflow_id, repo_id, name, path, state),
+                )
                 return True
         except sqlite3.OperationalError as e:
-            if "database is locked" in str(e):
-                logger.warning(f"Database locked for workflow {workflow_id}, skipping...")
+            if 'database is locked' in str(e):
+                logger.warning(
+                    f'Database locked for workflow {workflow_id}, skipping...'
+                )
                 return False
             raise
 
 
-def insert_run(run_id: str, workflow_id: str, run_number: int, commit_sha: str | None, branch: str | None, event: str | None, status: str, conclusion: str | None,
-               started_at: str | None, completed_at: str | None, duration_seconds: int | None, actor: str | None, url: str | None) -> None:
+def insert_run(
+    run_id: str,
+    workflow_id: str,
+    run_number: int,
+    commit_sha: str | None,
+    branch: str | None,
+    event: str | None,
+    status: str,
+    conclusion: str | None,
+    started_at: str | None,
+    completed_at: str | None,
+    duration_seconds: int | None,
+    actor: str | None,
+    url: str | None,
+) -> None:
     """Insert or update a workflow run record with idempotency."""
     # Validate input parameters for SQL injection prevention
-    params = (run_id, workflow_id, run_number, commit_sha, branch, event, status,
-              conclusion, started_at, completed_at, duration_seconds, actor, url)
+    params = (
+        run_id,
+        workflow_id,
+        run_number,
+        commit_sha,
+        branch,
+        event,
+        status,
+        conclusion,
+        started_at,
+        completed_at,
+        duration_seconds,
+        actor,
+        url,
+    )
     if not validate_query_params(params):
-        raise ValueError("Invalid parameters detected - potential SQL injection")
+        raise ValueError('Invalid parameters detected - potential SQL injection')
     with get_connection() as conn:
         cursor = conn.cursor()
 
         # Insert normalized entities if they don't exist
         branch_id = None
         if branch:
-            cursor.execute('INSERT OR IGNORE INTO branches (name) VALUES (?)', (branch,))
+            cursor.execute(
+                'INSERT OR IGNORE INTO branches (name) VALUES (?)', (branch,)
+            )
             cursor.execute('SELECT id FROM branches WHERE name = ?', (branch,))
             result = cursor.fetchone()
             if result:
@@ -372,7 +434,8 @@ def insert_run(run_id: str, workflow_id: str, run_number: int, commit_sha: str |
             if result:
                 actor_id = result[0]
 
-        cursor.execute('''
+        cursor.execute(
+            """
             INSERT INTO runs
             (id, workflow_id, run_number, commit_sha, branch_id, event_id, status, conclusion,
              started_at, completed_at, duration_seconds, actor_id, url)
@@ -391,12 +454,29 @@ def insert_run(run_id: str, workflow_id: str, run_number: int, commit_sha: str |
                 actor_id = excluded.actor_id,
                 url = excluded.url,
                 updated_at = CURRENT_TIMESTAMP
-        ''', (run_id, workflow_id, run_number, commit_sha, branch_id, event_id, status, conclusion,
-              started_at, completed_at, duration_seconds, actor_id, url))
+        """,
+            (
+                run_id,
+                workflow_id,
+                run_number,
+                commit_sha,
+                branch_id,
+                event_id,
+                status,
+                conclusion,
+                started_at,
+                completed_at,
+                duration_seconds,
+                actor_id,
+                url,
+            ),
+        )
 
 
 @retry_database_operation(max_retries=3)
-def insert_runs_batch(runs_data: list[tuple], conn: sqlite3.Connection | None = None) -> bool:
+def insert_runs_batch(
+    runs_data: list[tuple], conn: sqlite3.Connection | None = None
+) -> bool:
     """Insert or update multiple workflow run records in a single transaction with idempotency.
 
     Args:
@@ -414,7 +494,7 @@ def insert_runs_batch(runs_data: list[tuple], conn: sqlite3.Connection | None = 
     # Validate all batch data for SQL injection prevention
     for run_data in runs_data:
         if not validate_query_params(run_data):
-            raise ValueError("Invalid batch data detected - potential SQL injection")
+            raise ValueError('Invalid batch data detected - potential SQL injection')
 
     if conn is not None:
         # Use provided connection (for batch operations)
@@ -422,13 +502,28 @@ def insert_runs_batch(runs_data: list[tuple], conn: sqlite3.Connection | None = 
             cursor = conn.cursor()
             # Process each run individually to handle normalized entities
             for run_data in runs_data:
-                (run_id, workflow_id, run_number, commit_sha, branch, event, status, conclusion,
-                 started_at, completed_at, duration_seconds, actor, url) = run_data
+                (
+                    run_id,
+                    workflow_id,
+                    run_number,
+                    commit_sha,
+                    branch,
+                    event,
+                    status,
+                    conclusion,
+                    started_at,
+                    completed_at,
+                    duration_seconds,
+                    actor,
+                    url,
+                ) = run_data
 
                 # Insert normalized entities
                 branch_id = None
                 if branch:
-                    cursor.execute('INSERT OR IGNORE INTO branches (name) VALUES (?)', (branch,))
+                    cursor.execute(
+                        'INSERT OR IGNORE INTO branches (name) VALUES (?)', (branch,)
+                    )
                     cursor.execute('SELECT id FROM branches WHERE name = ?', (branch,))
                     result = cursor.fetchone()
                     if result:
@@ -436,7 +531,9 @@ def insert_runs_batch(runs_data: list[tuple], conn: sqlite3.Connection | None = 
 
                 event_id = None
                 if event:
-                    cursor.execute('INSERT OR IGNORE INTO events (name) VALUES (?)', (event,))
+                    cursor.execute(
+                        'INSERT OR IGNORE INTO events (name) VALUES (?)', (event,)
+                    )
                     cursor.execute('SELECT id FROM events WHERE name = ?', (event,))
                     result = cursor.fetchone()
                     if result:
@@ -444,13 +541,16 @@ def insert_runs_batch(runs_data: list[tuple], conn: sqlite3.Connection | None = 
 
                 actor_id = None
                 if actor:
-                    cursor.execute('INSERT OR IGNORE INTO actors (login) VALUES (?)', (actor,))
+                    cursor.execute(
+                        'INSERT OR IGNORE INTO actors (login) VALUES (?)', (actor,)
+                    )
                     cursor.execute('SELECT id FROM actors WHERE login = ?', (actor,))
                     result = cursor.fetchone()
                     if result:
                         actor_id = result[0]
 
-                cursor.execute('''
+                cursor.execute(
+                    """
                     INSERT INTO runs
                     (id, workflow_id, run_number, commit_sha, branch_id, event_id, status, conclusion,
                      started_at, completed_at, duration_seconds, actor_id, url)
@@ -469,12 +569,29 @@ def insert_runs_batch(runs_data: list[tuple], conn: sqlite3.Connection | None = 
                         actor_id = excluded.actor_id,
                         url = excluded.url,
                         updated_at = CURRENT_TIMESTAMP
-                ''', (run_id, workflow_id, run_number, commit_sha, branch_id, event_id, status, conclusion,
-                      started_at, completed_at, duration_seconds, actor_id, url))
+                """,
+                    (
+                        run_id,
+                        workflow_id,
+                        run_number,
+                        commit_sha,
+                        branch_id,
+                        event_id,
+                        status,
+                        conclusion,
+                        started_at,
+                        completed_at,
+                        duration_seconds,
+                        actor_id,
+                        url,
+                    ),
+                )
             return True
         except sqlite3.OperationalError as e:
-            if "database is locked" in str(e):
-                logger.warning(f"Database locked for batch insert, skipping {len(runs_data)} runs...")
+            if 'database is locked' in str(e):
+                logger.warning(
+                    f'Database locked for batch insert, skipping {len(runs_data)} runs...'
+                )
                 return False
             raise
     else:
@@ -484,21 +601,41 @@ def insert_runs_batch(runs_data: list[tuple], conn: sqlite3.Connection | None = 
                 cursor = conn.cursor()
                 # Process each run individually to handle normalized entities
                 for run_data in runs_data:
-                    (run_id, workflow_id, run_number, commit_sha, branch, event, status, conclusion,
-                     started_at, completed_at, duration_seconds, actor, url) = run_data
+                    (
+                        run_id,
+                        workflow_id,
+                        run_number,
+                        commit_sha,
+                        branch,
+                        event,
+                        status,
+                        conclusion,
+                        started_at,
+                        completed_at,
+                        duration_seconds,
+                        actor,
+                        url,
+                    ) = run_data
 
                     # Insert normalized entities
                     branch_id = None
                     if branch:
-                        cursor.execute('INSERT OR IGNORE INTO branches (name) VALUES (?)', (branch,))
-                        cursor.execute('SELECT id FROM branches WHERE name = ?', (branch,))
+                        cursor.execute(
+                            'INSERT OR IGNORE INTO branches (name) VALUES (?)',
+                            (branch,),
+                        )
+                        cursor.execute(
+                            'SELECT id FROM branches WHERE name = ?', (branch,)
+                        )
                         result = cursor.fetchone()
                         if result:
                             branch_id = result[0]
 
                     event_id = None
                     if event:
-                        cursor.execute('INSERT OR IGNORE INTO events (name) VALUES (?)', (event,))
+                        cursor.execute(
+                            'INSERT OR IGNORE INTO events (name) VALUES (?)', (event,)
+                        )
                         cursor.execute('SELECT id FROM events WHERE name = ?', (event,))
                         result = cursor.fetchone()
                         if result:
@@ -506,13 +643,18 @@ def insert_runs_batch(runs_data: list[tuple], conn: sqlite3.Connection | None = 
 
                     actor_id = None
                     if actor:
-                        cursor.execute('INSERT OR IGNORE INTO actors (login) VALUES (?)', (actor,))
-                        cursor.execute('SELECT id FROM actors WHERE login = ?', (actor,))
+                        cursor.execute(
+                            'INSERT OR IGNORE INTO actors (login) VALUES (?)', (actor,)
+                        )
+                        cursor.execute(
+                            'SELECT id FROM actors WHERE login = ?', (actor,)
+                        )
                         result = cursor.fetchone()
                         if result:
                             actor_id = result[0]
 
-                    cursor.execute('''
+                    cursor.execute(
+                        """
                         INSERT INTO runs
                         (id, workflow_id, run_number, commit_sha, branch_id, event_id, status, conclusion,
                          started_at, completed_at, duration_seconds, actor_id, url)
@@ -531,12 +673,29 @@ def insert_runs_batch(runs_data: list[tuple], conn: sqlite3.Connection | None = 
                             actor_id = excluded.actor_id,
                             url = excluded.url,
                             updated_at = CURRENT_TIMESTAMP
-                    ''', (run_id, workflow_id, run_number, commit_sha, branch_id, event_id, status, conclusion,
-                          started_at, completed_at, duration_seconds, actor_id, url))
+                    """,
+                        (
+                            run_id,
+                            workflow_id,
+                            run_number,
+                            commit_sha,
+                            branch_id,
+                            event_id,
+                            status,
+                            conclusion,
+                            started_at,
+                            completed_at,
+                            duration_seconds,
+                            actor_id,
+                            url,
+                        ),
+                    )
                 return True
         except sqlite3.OperationalError as e:
-            if "database is locked" in str(e):
-                logger.warning(f"Database locked for batch insert, skipping {len(runs_data)} runs...")
+            if 'database is locked' in str(e):
+                logger.warning(
+                    f'Database locked for batch insert, skipping {len(runs_data)} runs...'
+                )
                 return False
             raise
 
@@ -545,17 +704,23 @@ def get_workflows() -> list[sqlite3.Row]:
     """Retrieve all workflows."""
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute('''
+        cursor.execute("""
             SELECT w.*, r.name as repository
             FROM workflows w
             JOIN repositories r ON w.repository_id = r.id
             ORDER BY r.name, w.name
-        ''')
+        """)
         workflows = cursor.fetchall()
         return workflows
 
 
-def get_runs(workflow_id: str | None = None, limit: int | None = None, repository: str | None = None, status: str | None = None, conclusion: str | None = None) -> list[sqlite3.Row]:
+def get_runs(
+    workflow_id: str | None = None,
+    limit: int | None = None,
+    repository: str | None = None,
+    status: str | None = None,
+    conclusion: str | None = None,
+) -> list[sqlite3.Row]:
     """Retrieve workflow runs with various filters.
 
     Args:
@@ -604,7 +769,9 @@ def get_runs(workflow_id: str | None = None, limit: int | None = None, repositor
         return runs
 
 
-def _build_metrics_query(repository: str | None = None, days: int | None = None) -> tuple[str, list[str]]:
+def _build_metrics_query(
+    repository: str | None = None, days: int | None = None
+) -> tuple[str, list[str]]:
     """Build unified metrics query with optional filters.
 
     Args:
@@ -616,12 +783,12 @@ def _build_metrics_query(repository: str | None = None, days: int | None = None)
     """
     # Validate input parameters for SQL injection prevention
     if repository and not validate_query_params((repository,)):
-        raise ValueError("Invalid repository parameter - potential SQL injection")
+        raise ValueError('Invalid repository parameter - potential SQL injection')
 
     if days and (not isinstance(days, int) or days <= 0):
-        raise ValueError("Invalid days parameter - must be positive integer")
+        raise ValueError('Invalid days parameter - must be positive integer')
     # Common metric aggregations (avoid duplication)
-    metrics_select = f'''
+    metrics_select = f"""
         COUNT(*) as total_runs,
         SUM(CASE WHEN r.conclusion = 'success' THEN 1 ELSE 0 END) as success_count,
         SUM(CASE WHEN r.conclusion = 'failure' THEN 1 ELSE 0 END) as failure_count,
@@ -633,12 +800,12 @@ def _build_metrics_query(repository: str | None = None, days: int | None = None)
         ) as success_rate,
         MIN(r.started_at) as first_run,
         MAX(r.started_at) as last_run
-    '''
+    """
 
     # MTTR: Use cache for all-time, compute for period-filtered queries
     if days:
         # Period-filtered: Compute MTTR with subquery (slower but accurate)
-        mttr_select = '''
+        mttr_select = """
             (
                 SELECT ROUND(AVG((julianday(r2.completed_at) - julianday(r1.completed_at)) * 86400), 2)
                 FROM runs r1
@@ -653,7 +820,7 @@ def _build_metrics_query(repository: str | None = None, days: int | None = None)
                     AND r2.completed_at IS NOT NULL
                     AND r1.started_at >= datetime('now', '-' || ? || ' days')
             ) as mttr_seconds
-        '''
+        """
     else:
         # All-time: Use pre-computed cache (fast)
         mttr_select = 'c.mttr_seconds'
@@ -668,28 +835,28 @@ def _build_metrics_query(repository: str | None = None, days: int | None = None)
         params.append(days)  # For MTTR subquery
 
     if repository:
-        where_conditions.append("repo.name = ?")
+        where_conditions.append('repo.name = ?')
         params.append(repository)
 
-    where_clause = " AND ".join(where_conditions)
+    where_clause = ' AND '.join(where_conditions)
 
     # Build JOIN clause (add mttr_cache for all-time queries)
     if days:
         # Period-filtered: No cache join needed
-        joins = '''
+        joins = """
             JOIN repositories repo ON w.repository_id = repo.id
             LEFT JOIN runs r ON w.id = r.workflow_id
-        '''
+        """
     else:
         # All-time: Join with cache table
-        joins = '''
+        joins = """
             JOIN repositories repo ON w.repository_id = repo.id
             LEFT JOIN runs r ON w.id = r.workflow_id
             LEFT JOIN mttr_cache c ON w.id = c.workflow_id
-        '''
+        """
 
     # Unified query for all cases
-    query = f'''
+    query = f"""
         SELECT
             repo.name as repository,
             w.name as workflow_name,
@@ -701,14 +868,16 @@ def _build_metrics_query(repository: str | None = None, days: int | None = None)
         WHERE {where_clause}
         GROUP BY repo.name, w.id, w.name
         ORDER BY repo.name, w.name
-    '''
+    """
 
     return query, params
 
 
 # Internal function with TTL-based caching
 @lru_cache(maxsize=128)
-def _get_metrics_cached(repository: str | None, days: int | None, cache_key: str) -> list[sqlite3.Row]:
+def _get_metrics_cached(
+    repository: str | None, days: int | None, cache_key: str
+) -> list[sqlite3.Row]:
     """Internal cached version of metrics retrieval.
 
     Args:
@@ -730,25 +899,29 @@ def _get_metrics_cached(repository: str | None, days: int | None, cache_key: str
 
         metrics = []
         for row in rows:
-            metrics.append({
-                'repository': row['repository'],
-                'workflow_name': row['workflow_name'],
-                'workflow_id': row['workflow_id'],
-                'total_runs': row['total_runs'],
-                'success_count': row['success_count'],
-                'failure_count': row['failure_count'],
-                'avg_duration_seconds': row['avg_duration_seconds'],
-                'success_rate': row['success_rate'],
-                'first_run': row['first_run'],
-                'last_run': row['last_run'],
-                'mttr_seconds': row['mttr_seconds']
-            })
+            metrics.append(
+                {
+                    'repository': row['repository'],
+                    'workflow_name': row['workflow_name'],
+                    'workflow_id': row['workflow_id'],
+                    'total_runs': row['total_runs'],
+                    'success_count': row['success_count'],
+                    'failure_count': row['failure_count'],
+                    'avg_duration_seconds': row['avg_duration_seconds'],
+                    'success_rate': row['success_rate'],
+                    'first_run': row['first_run'],
+                    'last_run': row['last_run'],
+                    'mttr_seconds': row['mttr_seconds'],
+                }
+            )
 
         # Return as tuple for lru_cache (lists are not hashable)
         return tuple(tuple(m.items()) for m in metrics)
 
 
-def get_metrics_by_repository(repository: str | None = None, days: int | None = None) -> list[dict[str, object]]:
+def get_metrics_by_repository(
+    repository: str | None = None, days: int | None = None
+) -> list[dict[str, object]]:
     """Get CI/CD metrics from view with MTTR (cached for 1 minute).
 
     Args:
@@ -768,7 +941,11 @@ def get_metrics_by_repository(repository: str | None = None, days: int | None = 
     return [dict(items) for items in cached_tuples]
 
 
-def calculate_mttr(workflow_id: str | None = None, repository: str | None = None, days: int | None = None) -> float | None:
+def calculate_mttr(
+    workflow_id: str | None = None,
+    repository: str | None = None,
+    days: int | None = None,
+) -> float | None:
     """Calculate Mean Time To Recovery (MTTR).
 
     MTTR = Average time from a failure completion to the next success completion.
@@ -784,30 +961,34 @@ def calculate_mttr(workflow_id: str | None = None, repository: str | None = None
     with get_connection() as conn:
         cursor = conn.cursor()
 
-        filters = ["r1.conclusion IN ('success', 'failure')", "r1.status = 'completed'", "r1.completed_at IS NOT NULL"]
+        filters = [
+            "r1.conclusion IN ('success', 'failure')",
+            "r1.status = 'completed'",
+            'r1.completed_at IS NOT NULL',
+        ]
         params = []
 
         if workflow_id:
-            filters.append("r1.workflow_id = ?")
+            filters.append('r1.workflow_id = ?')
             params.append(workflow_id)
 
         if repository:
-            filters.append("repo.name = ?")
+            filters.append('repo.name = ?')
             params.append(repository)
 
         if days:
             filters.append("r1.completed_at >= datetime('now', '-' || ? || ' days')")
             params.append(int(days))
 
-        where_clause = " AND ".join(filters)
+        where_clause = ' AND '.join(filters)
 
         # Need to join workflows and repositories for repository filter
         if repository:
-            from_clause = "FROM runs r1 JOIN workflows w ON r1.workflow_id = w.id JOIN repositories repo ON w.repository_id = repo.id"
+            from_clause = 'FROM runs r1 JOIN workflows w ON r1.workflow_id = w.id JOIN repositories repo ON w.repository_id = repo.id'
         else:
-            from_clause = "FROM runs r1"
+            from_clause = 'FROM runs r1'
 
-        query = f'''
+        query = f"""
             SELECT
                 r1.id,
                 r1.completed_at as failure_time,
@@ -821,7 +1002,7 @@ def calculate_mttr(workflow_id: str | None = None, repository: str | None = None
             WHERE {where_clause} AND r1.conclusion = 'failure'
             GROUP BY r1.id, r1.completed_at
             HAVING recovery_time IS NOT NULL
-        '''
+        """
 
         cursor.execute(query, params)
         rows = cursor.fetchall()
@@ -853,7 +1034,7 @@ def refresh_mttr_cache() -> None:
 
     Designed to be called by background worker thread.
     """
-    logger.info("Starting MTTR cache refresh...")
+    logger.info('Starting MTTR cache refresh...')
     start_time = time.time()
 
     try:
@@ -876,39 +1057,52 @@ def refresh_mttr_cache() -> None:
 
                     if mttr is not None:
                         # Count sample size (number of failures)
-                        cursor.execute('''
+                        cursor.execute(
+                            """
                             SELECT COUNT(*) as count
                             FROM runs
                             WHERE workflow_id = ?
                                 AND conclusion = 'failure'
                                 AND status = 'completed'
-                        ''', (workflow_id,))
+                        """,
+                            (workflow_id,),
+                        )
                         sample_size = cursor.fetchone()['count']
 
                         # Insert or update cache
-                        cursor.execute('''
+                        cursor.execute(
+                            """
                             INSERT INTO mttr_cache (workflow_id, mttr_seconds, sample_size, calculated_at)
                             VALUES (?, ?, ?, CURRENT_TIMESTAMP)
                             ON CONFLICT(workflow_id) DO UPDATE SET
                                 mttr_seconds = excluded.mttr_seconds,
                                 sample_size = excluded.sample_size,
                                 calculated_at = excluded.calculated_at
-                        ''', (workflow_id, mttr, sample_size))
+                        """,
+                            (workflow_id, mttr, sample_size),
+                        )
                         success_count += 1
                     else:
                         # No MTTR data (no failures or no recovery) - clear cache entry
-                        cursor.execute('DELETE FROM mttr_cache WHERE workflow_id = ?', (workflow_id,))
+                        cursor.execute(
+                            'DELETE FROM mttr_cache WHERE workflow_id = ?',
+                            (workflow_id,),
+                        )
 
                 except Exception as e:
-                    logger.error(f"Error calculating MTTR for workflow {workflow_id}: {e}")
+                    logger.error(
+                        f'Error calculating MTTR for workflow {workflow_id}: {e}'
+                    )
                     error_count += 1
                     continue
 
             elapsed = time.time() - start_time
-            logger.info(f"MTTR cache refresh completed: {success_count} updated, {error_count} errors, {elapsed:.2f}s")
+            logger.info(
+                f'MTTR cache refresh completed: {success_count} updated, {error_count} errors, {elapsed:.2f}s'
+            )
 
     except Exception as e:
-        logger.error(f"MTTR cache refresh failed: {e}")
+        logger.error(f'MTTR cache refresh failed: {e}')
         raise
 
 
@@ -920,12 +1114,12 @@ def clear_mttr_cache() -> None:
     - Testing
     - Forcing full recalculation
     """
-    logger.info("Clearing MTTR cache...")
+    logger.info('Clearing MTTR cache...')
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute('DELETE FROM mttr_cache')
         deleted_count = cursor.rowcount
-        logger.info(f"MTTR cache cleared: {deleted_count} entries removed")
+        logger.info(f'MTTR cache cleared: {deleted_count} entries removed')
 
 
 if __name__ == '__main__':

@@ -37,7 +37,9 @@ def test_initialize_database(test_db):
     cursor = conn.cursor()
 
     # Check workflows table exists
-    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='workflows'")
+    cursor.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='workflows'"
+    )
     assert cursor.fetchone() is not None
 
     # Check runs table exists
@@ -45,7 +47,9 @@ def test_initialize_database(test_db):
     assert cursor.fetchone() is not None
 
     # Check indexes exist
-    cursor.execute("SELECT name FROM sqlite_master WHERE type='index' AND name='idx_runs_conclusion'")
+    cursor.execute(
+        "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_runs_conclusion'"
+    )
     assert cursor.fetchone() is not None
 
     conn.close()
@@ -54,10 +58,13 @@ def test_initialize_database(test_db):
 def test_insert_and_get_workflow(test_db):
     """Test workflow insertion and retrieval."""
     from cipette import database
+
     database.DATABASE_PATH = test_db
 
     # Insert workflow
-    database.insert_workflow('123', 'owner/repo', 'Test Workflow', '.github/workflows/test.yml', 'active')
+    database.insert_workflow(
+        '123', 'owner/repo', 'Test Workflow', '.github/workflows/test.yml', 'active'
+    )
 
     # Retrieve workflows
     workflows = database.get_workflows()
@@ -70,6 +77,7 @@ def test_insert_and_get_workflow(test_db):
 def test_insert_and_get_runs(test_db):
     """Test run insertion and retrieval."""
     from cipette import database
+
     database.DATABASE_PATH = test_db
 
     # Insert workflow first
@@ -77,10 +85,19 @@ def test_insert_and_get_runs(test_db):
 
     # Insert run
     database.insert_run(
-        '456', '123', 1, 'abc123', 'main', 'push',
-        'completed', 'success', '2025-01-01 10:00:00',
-        '2025-01-01 10:05:00', 300, 'testuser',
-        'https://github.com/owner/repo/actions/runs/456'
+        '456',
+        '123',
+        1,
+        'abc123',
+        'main',
+        'push',
+        'completed',
+        'success',
+        '2025-01-01 10:00:00',
+        '2025-01-01 10:05:00',
+        300,
+        'testuser',
+        'https://github.com/owner/repo/actions/runs/456',
     )
 
     # Retrieve runs
@@ -94,6 +111,7 @@ def test_insert_and_get_runs(test_db):
 def test_insert_runs_batch(test_db):
     """Test batch run insertion."""
     from cipette import database
+
     database.DATABASE_PATH = test_db
 
     # Insert workflow
@@ -101,10 +119,36 @@ def test_insert_runs_batch(test_db):
 
     # Batch insert runs
     runs_data = [
-        ('456', '123', 1, 'abc123', 'main', 'push', 'completed', 'success',
-         '2025-01-01 10:00:00', '2025-01-01 10:05:00', 300, 'user1', 'https://github.com/test1'),
-        ('457', '123', 2, 'def456', 'main', 'push', 'completed', 'failure',
-         '2025-01-01 11:00:00', '2025-01-01 11:03:00', 180, 'user2', 'https://github.com/test2'),
+        (
+            '456',
+            '123',
+            1,
+            'abc123',
+            'main',
+            'push',
+            'completed',
+            'success',
+            '2025-01-01 10:00:00',
+            '2025-01-01 10:05:00',
+            300,
+            'user1',
+            'https://github.com/test1',
+        ),
+        (
+            '457',
+            '123',
+            2,
+            'def456',
+            'main',
+            'push',
+            'completed',
+            'failure',
+            '2025-01-01 11:00:00',
+            '2025-01-01 11:03:00',
+            180,
+            'user2',
+            'https://github.com/test2',
+        ),
     ]
     database.insert_runs_batch(runs_data)
 
@@ -116,6 +160,7 @@ def test_insert_runs_batch(test_db):
 def test_get_runs_with_filters(test_db):
     """Test run retrieval with various filters."""
     from cipette import database
+
     database.DATABASE_PATH = test_db
 
     # Setup test data
@@ -123,12 +168,51 @@ def test_get_runs_with_filters(test_db):
     database.insert_workflow('124', 'owner/repo2', 'Workflow 2')
 
     runs_data = [
-        ('456', '123', 1, 'abc', 'main', 'push', 'completed', 'success',
-         '2025-01-01 10:00:00', '2025-01-01 10:05:00', 300, 'user1', 'url1'),
-        ('457', '123', 2, 'def', 'main', 'push', 'completed', 'failure',
-         '2025-01-01 11:00:00', '2025-01-01 11:03:00', 180, 'user2', 'url2'),
-        ('458', '124', 1, 'ghi', 'dev', 'pull_request', 'completed', 'success',
-         '2025-01-01 12:00:00', '2025-01-01 12:02:00', 120, 'user3', 'url3'),
+        (
+            '456',
+            '123',
+            1,
+            'abc',
+            'main',
+            'push',
+            'completed',
+            'success',
+            '2025-01-01 10:00:00',
+            '2025-01-01 10:05:00',
+            300,
+            'user1',
+            'url1',
+        ),
+        (
+            '457',
+            '123',
+            2,
+            'def',
+            'main',
+            'push',
+            'completed',
+            'failure',
+            '2025-01-01 11:00:00',
+            '2025-01-01 11:03:00',
+            180,
+            'user2',
+            'url2',
+        ),
+        (
+            '458',
+            '124',
+            1,
+            'ghi',
+            'dev',
+            'pull_request',
+            'completed',
+            'success',
+            '2025-01-01 12:00:00',
+            '2025-01-01 12:02:00',
+            120,
+            'user3',
+            'url3',
+        ),
     ]
     database.insert_runs_batch(runs_data)
 
@@ -152,18 +236,58 @@ def test_get_runs_with_filters(test_db):
 def test_get_metrics_by_repository(test_db):
     """Test metrics calculation."""
     from cipette import database
+
     database.DATABASE_PATH = test_db
 
     # Setup test data
     database.insert_workflow('123', 'owner/repo', 'Test Workflow')
 
     runs_data = [
-        ('456', '123', 1, 'abc', 'main', 'push', 'completed', 'success',
-         '2025-01-01 10:00:00', '2025-01-01 10:05:00', 300, 'user1', 'url1'),
-        ('457', '123', 2, 'def', 'main', 'push', 'completed', 'failure',
-         '2025-01-01 11:00:00', '2025-01-01 11:03:00', 180, 'user2', 'url2'),
-        ('458', '123', 3, 'ghi', 'main', 'push', 'completed', 'success',
-         '2025-01-01 12:00:00', '2025-01-01 12:04:00', 240, 'user3', 'url3'),
+        (
+            '456',
+            '123',
+            1,
+            'abc',
+            'main',
+            'push',
+            'completed',
+            'success',
+            '2025-01-01 10:00:00',
+            '2025-01-01 10:05:00',
+            300,
+            'user1',
+            'url1',
+        ),
+        (
+            '457',
+            '123',
+            2,
+            'def',
+            'main',
+            'push',
+            'completed',
+            'failure',
+            '2025-01-01 11:00:00',
+            '2025-01-01 11:03:00',
+            180,
+            'user2',
+            'url2',
+        ),
+        (
+            '458',
+            '123',
+            3,
+            'ghi',
+            'main',
+            'push',
+            'completed',
+            'success',
+            '2025-01-01 12:00:00',
+            '2025-01-01 12:04:00',
+            240,
+            'user3',
+            'url3',
+        ),
     ]
     database.insert_runs_batch(runs_data)
 
@@ -182,16 +306,43 @@ def test_get_metrics_by_repository(test_db):
 def test_calculate_mttr(test_db):
     """Test MTTR calculation."""
     from cipette import database
+
     database.DATABASE_PATH = test_db
 
     # Setup test data: failure followed by success
     database.insert_workflow('123', 'owner/repo', 'Test Workflow')
 
     runs_data = [
-        ('456', '123', 1, 'abc', 'main', 'push', 'completed', 'failure',
-         '2025-01-01 10:00:00', '2025-01-01 10:03:00', 180, 'user1', 'url1'),
-        ('457', '123', 2, 'def', 'main', 'push', 'completed', 'success',
-         '2025-01-01 10:10:00', '2025-01-01 10:15:00', 300, 'user2', 'url2'),
+        (
+            '456',
+            '123',
+            1,
+            'abc',
+            'main',
+            'push',
+            'completed',
+            'failure',
+            '2025-01-01 10:00:00',
+            '2025-01-01 10:03:00',
+            180,
+            'user1',
+            'url1',
+        ),
+        (
+            '457',
+            '123',
+            2,
+            'def',
+            'main',
+            'push',
+            'completed',
+            'success',
+            '2025-01-01 10:10:00',
+            '2025-01-01 10:15:00',
+            300,
+            'user2',
+            'url2',
+        ),
     ]
     database.insert_runs_batch(runs_data)
 
@@ -205,11 +356,14 @@ def test_calculate_mttr(test_db):
 def test_idempotency(test_db):
     """Test that reinserting same data doesn't create duplicates."""
     from cipette import database
+
     database.DATABASE_PATH = test_db
 
     # Insert workflow twice
     database.insert_workflow('123', 'owner/repo', 'Test Workflow', 'path1', 'active')
-    database.insert_workflow('123', 'owner/repo', 'Test Workflow Updated', 'path2', 'inactive')
+    database.insert_workflow(
+        '123', 'owner/repo', 'Test Workflow Updated', 'path2', 'inactive'
+    )
 
     workflows = database.get_workflows()
     assert len(workflows) == 1
@@ -218,14 +372,34 @@ def test_idempotency(test_db):
 
     # Insert run twice
     database.insert_run(
-        '456', '123', 1, 'abc123', 'main', 'push',
-        'completed', 'success', '2025-01-01 10:00:00',
-        '2025-01-01 10:05:00', 300, 'user1', 'url1'
+        '456',
+        '123',
+        1,
+        'abc123',
+        'main',
+        'push',
+        'completed',
+        'success',
+        '2025-01-01 10:00:00',
+        '2025-01-01 10:05:00',
+        300,
+        'user1',
+        'url1',
     )
     database.insert_run(
-        '456', '123', 1, 'abc123', 'main', 'push',
-        'completed', 'failure', '2025-01-01 10:00:00',
-        '2025-01-01 10:06:00', 360, 'user1', 'url1'
+        '456',
+        '123',
+        1,
+        'abc123',
+        'main',
+        'push',
+        'completed',
+        'failure',
+        '2025-01-01 10:00:00',
+        '2025-01-01 10:06:00',
+        360,
+        'user1',
+        'url1',
     )
 
     runs = database.get_runs()
@@ -237,18 +411,30 @@ def test_idempotency(test_db):
 def test_sql_injection_protection(test_db):
     """Test that SQL injection attempts are safely handled."""
     from cipette import database
+
     database.DATABASE_PATH = test_db
 
     database.insert_workflow('123', 'owner/repo', 'Test Workflow')
     database.insert_run(
-        '456', '123', 1, 'abc', 'main', 'push', 'completed', 'success',
-        '2025-01-01 10:00:00', '2025-01-01 10:05:00', 300, 'user1', 'url1'
+        '456',
+        '123',
+        1,
+        'abc',
+        'main',
+        'push',
+        'completed',
+        'success',
+        '2025-01-01 10:00:00',
+        '2025-01-01 10:05:00',
+        300,
+        'user1',
+        'url1',
     )
 
     # Attempt SQL injection via limit parameter
     # Should raise ValueError when trying to convert malicious string to int
     with pytest.raises(ValueError):
-        runs = database.get_runs(limit="1; DROP TABLE runs; --")
+        runs = database.get_runs(limit='1; DROP TABLE runs; --')
 
     # Verify table still exists (injection was prevented)
     conn = sqlite3.connect(test_db)

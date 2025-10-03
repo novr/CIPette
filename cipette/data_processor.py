@@ -20,7 +20,9 @@ class DataProcessor:
         """
         self.max_workflow_runs = max_workflow_runs
 
-    def process_workflows_from_graphql(self, workflows_data: dict[str, Any], repository: str) -> tuple[int, int]:
+    def process_workflows_from_graphql(
+        self, workflows_data: dict[str, Any], repository: str
+    ) -> tuple[int, int]:
         """Process workflows data from GraphQL response.
 
         Args:
@@ -39,7 +41,7 @@ class DataProcessor:
         workflow_count = len(workflows)
         total_runs = 0
 
-        logger.info(f"Processing {workflow_count} workflows from GraphQL")
+        logger.info(f'Processing {workflow_count} workflows from GraphQL')
 
         for workflow in workflows:
             workflow_id = int(workflow['id'])
@@ -53,23 +55,27 @@ class DataProcessor:
                 repository=repository,
                 name=workflow_name,
                 path=workflow_path,
-                state=workflow_state
+                state=workflow_state,
             )
 
             # Process runs
             runs = workflow.get('runs', {}).get('nodes', [])
-            runs_to_process = runs[:self.max_workflow_runs]
+            runs_to_process = runs[: self.max_workflow_runs]
 
             if runs_to_process:
                 runs_data = self._process_runs_data(runs_to_process, workflow_id)
                 if runs_data:
                     insert_runs_batch(runs_data)
                     total_runs += len(runs_data)
-                    logger.info(f"Saved {len(runs_data)} runs to database for workflow {workflow_id}")
+                    logger.info(
+                        f'Saved {len(runs_data)} runs to database for workflow {workflow_id}'
+                    )
 
         return workflow_count, total_runs
 
-    def process_workflows_from_rest(self, workflows, repository: str) -> tuple[int, int]:
+    def process_workflows_from_rest(
+        self, workflows, repository: str
+    ) -> tuple[int, int]:
         """Process workflows data from REST API.
 
         Args:
@@ -82,7 +88,7 @@ class DataProcessor:
         workflow_count = workflows.totalCount
         total_runs = 0
 
-        logger.info(f"Processing {workflow_count} workflows from REST API")
+        logger.info(f'Processing {workflow_count} workflows from REST API')
 
         for workflow in workflows:
             workflow_id = workflow.id
@@ -96,26 +102,30 @@ class DataProcessor:
                 repository=repository,
                 name=workflow_name,
                 path=workflow_path,
-                state=workflow_state
+                state=workflow_state,
             )
 
             # Process runs
             try:
-                runs = list(workflow.get_runs()[:self.max_workflow_runs])
+                runs = list(workflow.get_runs()[: self.max_workflow_runs])
                 runs_data = self._process_runs_data_from_rest(runs, workflow_id)
 
                 if runs_data:
                     insert_runs_batch(runs_data)
                     total_runs += len(runs_data)
-                    logger.info(f"Saved {len(runs_data)} runs to database for workflow {workflow_id}")
+                    logger.info(
+                        f'Saved {len(runs_data)} runs to database for workflow {workflow_id}'
+                    )
 
             except Exception as e:
-                logger.warning(f"Error processing runs for workflow {workflow_id}: {e}")
+                logger.warning(f'Error processing runs for workflow {workflow_id}: {e}')
                 continue
 
         return workflow_count, total_runs
 
-    def _process_runs_data(self, runs: list[dict[str, Any]], workflow_id: int) -> list[tuple]:
+    def _process_runs_data(
+        self, runs: list[dict[str, Any]], workflow_id: int
+    ) -> list[tuple]:
         """Process runs data from GraphQL response.
 
         Args:
@@ -150,19 +160,33 @@ class DataProcessor:
                 actor = run.get('actor', {}).get('login', 'unknown')
                 url = run.get('url', '')
 
-                runs_data.append((
-                    run_id, workflow_id, run_number, commit_sha, branch, event,
-                    status, conclusion, created_at, updated_at, duration_seconds,
-                    actor, url
-                ))
+                runs_data.append(
+                    (
+                        run_id,
+                        workflow_id,
+                        run_number,
+                        commit_sha,
+                        branch,
+                        event,
+                        status,
+                        conclusion,
+                        created_at,
+                        updated_at,
+                        duration_seconds,
+                        actor,
+                        url,
+                    )
+                )
 
             except (KeyError, ValueError, TypeError) as e:
-                logger.warning(f"Skipping malformed run data: {e}")
+                logger.warning(f'Skipping malformed run data: {e}')
                 continue
 
         return runs_data
 
-    def _process_runs_data_from_rest(self, runs: list[Any], workflow_id: int) -> list[tuple]:
+    def _process_runs_data_from_rest(
+        self, runs: list[Any], workflow_id: int
+    ) -> list[tuple]:
         """Process runs data from REST API.
 
         Args:
@@ -197,14 +221,26 @@ class DataProcessor:
                 actor = run.actor.login if run.actor else 'unknown'
                 url = run.html_url
 
-                runs_data.append((
-                    run_id, workflow_id, run_number, commit_sha, branch, event,
-                    status, conclusion, created_at, updated_at, duration_seconds,
-                    actor, url
-                ))
+                runs_data.append(
+                    (
+                        run_id,
+                        workflow_id,
+                        run_number,
+                        commit_sha,
+                        branch,
+                        event,
+                        status,
+                        conclusion,
+                        created_at,
+                        updated_at,
+                        duration_seconds,
+                        actor,
+                        url,
+                    )
+                )
 
             except (AttributeError, TypeError, ValueError) as e:
-                logger.warning(f"Skipping malformed run data: {e}")
+                logger.warning(f'Skipping malformed run data: {e}')
                 continue
 
         return runs_data

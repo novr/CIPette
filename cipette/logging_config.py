@@ -7,7 +7,7 @@ from pathlib import Path
 def setup_logging() -> None:
     """Set up logging configuration for the entire application."""
     # Create data directory if it doesn't exist
-    data_dir = Path("data")
+    data_dir = Path('data')
     data_dir.mkdir(exist_ok=True)
 
     # Configure root logger
@@ -17,8 +17,8 @@ def setup_logging() -> None:
         datefmt='%Y-%m-%d %H:%M:%S',
         handlers=[
             logging.FileHandler(data_dir / 'cipette.log'),
-            logging.StreamHandler()
-        ]
+            logging.StreamHandler(),
+        ],
     )
 
     # Set specific loggers to appropriate levels
@@ -32,5 +32,5 @@ def setup_logging() -> None:
     logging.getLogger('werkzeug').setLevel(logging.WARNING)
 
     logger = logging.getLogger(__name__)
-    logger.info("Logging configuration initialized")
+    logger.info('Logging configuration initialized')
     return logger

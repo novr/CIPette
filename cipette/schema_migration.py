@@ -26,7 +26,7 @@ class SchemaMigrator:
         with get_connection() as conn:
             cursor = conn.cursor()
             try:
-                cursor.execute("PRAGMA user_version")
+                cursor.execute('PRAGMA user_version')
                 return cursor.fetchone()[0]
             except sqlite3.OperationalError:
                 return 0  # No version table exists
@@ -52,19 +52,21 @@ class SchemaMigrator:
         4. Updates schema version
         """
         if self.current_version >= self.target_version:
-            logger.info("Database already at target version")
+            logger.info('Database already at target version')
             return
 
-        logger.info(f"Migrating database from version {self.current_version} to {self.target_version}")
+        logger.info(
+            f'Migrating database from version {self.current_version} to {self.target_version}'
+        )
 
         try:
             self._create_normalized_tables()
             self._migrate_data()
             self._cleanup_old_tables()
             self._set_version(self.target_version)
-            logger.info("Database migration completed successfully")
+            logger.info('Database migration completed successfully')
         except Exception as e:
-            logger.error(f"Database migration failed: {e}")
+            logger.error(f'Database migration failed: {e}')
             raise
 
     def _create_normalized_tables(self) -> None:
@@ -73,43 +75,43 @@ class SchemaMigrator:
             cursor = conn.cursor()
 
             # Repositories table
-            cursor.execute('''
+            cursor.execute("""
                 CREATE TABLE IF NOT EXISTS repositories (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     name TEXT UNIQUE NOT NULL,
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
-            ''')
+            """)
 
             # Actors table
-            cursor.execute('''
+            cursor.execute("""
                 CREATE TABLE IF NOT EXISTS actors (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     login TEXT UNIQUE NOT NULL,
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
-            ''')
+            """)
 
             # Events table
-            cursor.execute('''
+            cursor.execute("""
                 CREATE TABLE IF NOT EXISTS events (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     name TEXT UNIQUE NOT NULL,
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
-            ''')
+            """)
 
             # Branches table
-            cursor.execute('''
+            cursor.execute("""
                 CREATE TABLE IF NOT EXISTS branches (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     name TEXT UNIQUE NOT NULL,
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
-            ''')
+            """)
 
             # Normalized workflows table
-            cursor.execute('''
+            cursor.execute("""
                 CREATE TABLE IF NOT EXISTS workflows_normalized (
                     id TEXT PRIMARY KEY,
                     repository_id INTEGER NOT NULL,
@@ -120,10 +122,10 @@ class SchemaMigrator:
                     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (repository_id) REFERENCES repositories (id)
                 )
-            ''')
+            """)
 
             # Normalized runs table
-            cursor.execute('''
+            cursor.execute("""
                 CREATE TABLE IF NOT EXISTS runs_normalized (
                     id TEXT PRIMARY KEY,
                     workflow_id TEXT NOT NULL,
@@ -145,48 +147,48 @@ class SchemaMigrator:
                     FOREIGN KEY (event_id) REFERENCES events (id),
                     FOREIGN KEY (actor_id) REFERENCES actors (id)
                 )
-            ''')
+            """)
 
             # Create indexes for normalized tables
-            cursor.execute('''
+            cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_workflows_normalized_repository
                 ON workflows_normalized (repository_id)
-            ''')
+            """)
 
-            cursor.execute('''
+            cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_runs_normalized_workflow
                 ON runs_normalized (workflow_id)
-            ''')
+            """)
 
-            cursor.execute('''
+            cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_runs_normalized_status
                 ON runs_normalized (status)
-            ''')
+            """)
 
-            cursor.execute('''
+            cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_runs_normalized_completed_at
                 ON runs_normalized (completed_at)
-            ''')
+            """)
 
-            cursor.execute('''
+            cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_runs_normalized_conclusion
                 ON runs_normalized (conclusion)
-            ''')
+            """)
 
-            cursor.execute('''
+            cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_runs_normalized_branch
                 ON runs_normalized (branch_id)
-            ''')
+            """)
 
-            cursor.execute('''
+            cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_runs_normalized_event
                 ON runs_normalized (event_id)
-            ''')
+            """)
 
-            cursor.execute('''
+            cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_runs_normalized_actor
                 ON runs_normalized (actor_id)
-            ''')
+            """)
 
             conn.commit()
 
@@ -196,31 +198,31 @@ class SchemaMigrator:
             cursor = conn.cursor()
 
             # Migrate repositories
-            cursor.execute('''
+            cursor.execute("""
                 INSERT OR IGNORE INTO repositories (name)
                 SELECT DISTINCT repository FROM workflows
-            ''')
+            """)
 
             # Migrate actors
-            cursor.execute('''
+            cursor.execute("""
                 INSERT OR IGNORE INTO actors (login)
                 SELECT DISTINCT actor FROM runs WHERE actor IS NOT NULL
-            ''')
+            """)
 
             # Migrate events
-            cursor.execute('''
+            cursor.execute("""
                 INSERT OR IGNORE INTO events (name)
                 SELECT DISTINCT event FROM runs WHERE event IS NOT NULL
-            ''')
+            """)
 
             # Migrate branches
-            cursor.execute('''
+            cursor.execute("""
                 INSERT OR IGNORE INTO branches (name)
                 SELECT DISTINCT branch FROM runs WHERE branch IS NOT NULL
-            ''')
+            """)
 
             # Migrate workflows
-            cursor.execute('''
+            cursor.execute("""
                 INSERT INTO workflows_normalized (id, repository_id, name, path, state)
                 SELECT
                     w.id,
@@ -230,10 +232,10 @@ class SchemaMigrator:
                     w.state
                 FROM workflows w
                 JOIN repositories r ON w.repository = r.name
-            ''')
+            """)
 
             # Migrate runs
-            cursor.execute('''
+            cursor.execute("""
                 INSERT INTO runs_normalized (
                     id, workflow_id, run_number, commit_sha, branch_id, event_id,
                     status, conclusion, started_at, completed_at, duration_seconds,
@@ -257,7 +259,7 @@ class SchemaMigrator:
                 LEFT JOIN branches b ON r.branch = b.name
                 LEFT JOIN events e ON r.event = e.name
                 LEFT JOIN actors a ON r.actor = a.login
-            ''')
+            """)
 
             conn.commit()
 
@@ -275,10 +277,10 @@ class SchemaMigrator:
             cursor.execute('ALTER TABLE runs_normalized RENAME TO runs')
 
             # Update foreign key constraints
-            cursor.execute('''
+            cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_runs_workflow_id
                 ON runs (workflow_id)
-            ''')
+            """)
 
             conn.commit()
 
@@ -288,7 +290,7 @@ class SchemaMigrator:
             cursor = conn.cursor()
 
             # Create workflow metrics view with normalized schema
-            cursor.execute('''
+            cursor.execute("""
                 CREATE VIEW IF NOT EXISTS workflow_metrics_view AS
                 SELECT
                     repo.name as repository,
@@ -310,10 +312,10 @@ class SchemaMigrator:
                 LEFT JOIN runs r ON w.id = r.workflow_id
                 WHERE r.status = 'completed'
                 GROUP BY repo.name, w.id, w.name
-            ''')
+            """)
 
             # Create MTTR view with normalized schema
-            cursor.execute('''
+            cursor.execute("""
                 CREATE VIEW IF NOT EXISTS mttr_view AS
                 SELECT
                     r1.workflow_id,
@@ -330,7 +332,7 @@ class SchemaMigrator:
                     AND r1.status = 'completed'
                     AND r2.completed_at IS NOT NULL
                 GROUP BY r1.workflow_id
-            ''')
+            """)
 
             conn.commit()
 

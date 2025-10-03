@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 class ETagManager:
     """Manages ETag caching for GitHub API conditional requests."""
 
-    def __init__(self, cache_file_path: str = "data/last_run.json"):
+    def __init__(self, cache_file_path: str = 'data/last_run.json'):
         self.cache_file_path = Path(cache_file_path)
         self.cache_file_path.parent.mkdir(exist_ok=True)
 
@@ -68,7 +68,7 @@ class ETagManager:
             with open(self.cache_file_path) as f:
                 return json.load(f)
         except (OSError, json.JSONDecodeError) as e:
-            logger.warning(f"Error reading last run info: {e}")
+            logger.warning(f'Error reading last run info: {e}')
             return None
 
     def save_last_run_info(self, repo_data: dict):
@@ -85,4 +85,4 @@ class ETagManager:
             with open(self.cache_file_path, 'w') as f:
                 json.dump(last_run_info, f, indent=2)
         except OSError as e:
-            logger.error(f"Error saving last run info: {e}")
+            logger.error(f'Error saving last run info: {e}')

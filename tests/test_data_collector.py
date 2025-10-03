@@ -7,8 +7,6 @@ import pytest
 from cipette.collector import GitHubDataCollector
 
 
-
-
 @pytest.fixture
 def collector():
     """Create a GitHubDataCollector instance with mocked GitHubClient."""
@@ -33,6 +31,7 @@ def test_get_last_run_info_not_exists(collector, tmp_path):
     """Test reading last run info when file doesn't exist."""
     # Create new collector with custom file path
     from cipette.etag_manager import ETagManager
+
     collector.etag_manager = ETagManager(str(tmp_path / 'nonexistent.json'))
     result = collector.get_last_run_info()
     assert result is None
@@ -50,6 +49,7 @@ def test_get_last_run_info_exists(collector, tmp_path):
 
     # Create new collector with custom file path
     from cipette.etag_manager import ETagManager
+
     collector.etag_manager = ETagManager(str(last_run_file))
     result = collector.get_last_run_info()
 
@@ -60,9 +60,10 @@ def test_get_last_run_info_exists(collector, tmp_path):
 def test_save_last_run_info(collector, tmp_path):
     """Test saving last run info."""
     last_run_file = tmp_path / 'last_run.json'
-    
+
     # Create new collector with custom file path
     from cipette.etag_manager import ETagManager
+
     collector.etag_manager = ETagManager(str(last_run_file))
 
     repo_timestamps = {'owner/repo': '2025-01-01T10:00:00+00:00'}
@@ -102,17 +103,20 @@ def test_collect_repository_data_github_exception(collector):
 
 def test_collect_repository_data_success(collector):
     """Test successful data collection."""
-    with patch.object(collector.github_client, 'check_rate_limit', return_value=5000), \
-         patch.object(collector.github_client, 'get_repository') as mock_get_repo, \
-         patch('cipette.data_processor.DataProcessor.process_workflows_from_rest') as mock_process:
-        
+    with (
+        patch.object(collector.github_client, 'check_rate_limit', return_value=5000),
+        patch.object(collector.github_client, 'get_repository') as mock_get_repo,
+        patch(
+            'cipette.data_processor.DataProcessor.process_workflows_from_rest'
+        ) as mock_process,
+    ):
         # Mock repository
         mock_repo = Mock()
         mock_workflows = Mock()
         mock_workflows.totalCount = 1
         mock_repo.get_workflows.return_value = mock_workflows
         mock_get_repo.return_value = mock_repo
-        
+
         # Mock data processor
         mock_process.return_value = (1, 1)
 
@@ -135,8 +139,10 @@ def test_collect_all_data_no_token(collector):
 
 def test_collect_all_data_no_repositories(collector):
     """Test behavior when TARGET_REPOSITORIES is not set."""
-    with patch('cipette.config.Config.TARGET_REPOSITORIES', []), \
-         patch('cipette.collector.initialize_database'):
+    with (
+        patch('cipette.config.Config.TARGET_REPOSITORIES', []),
+        patch('cipette.collector.initialize_database'),
+    ):
         # Should return early without error
         collector.collect_all_data()
 
@@ -155,11 +161,14 @@ def test_collect_all_data_with_last_run(collector, tmp_path):
     collector.LAST_RUN_FILE = str(last_run_file)
 
     # Mock dependencies
-    with patch('cipette.config.Config.GITHUB_TOKEN', 'fake_token'), \
-         patch('cipette.config.Config.TARGET_REPOSITORIES', ['owner/repo']), \
-         patch('cipette.collector.initialize_database'), \
-         patch.object(collector, 'collect_repository_data', return_value=(1, 1)) as mock_collect:
-
+    with (
+        patch('cipette.config.Config.GITHUB_TOKEN', 'fake_token'),
+        patch('cipette.config.Config.TARGET_REPOSITORIES', ['owner/repo']),
+        patch('cipette.collector.initialize_database'),
+        patch.object(
+            collector, 'collect_repository_data', return_value=(1, 1)
+        ) as mock_collect,
+    ):
         collector.collect_all_data()
 
         # Verify collect_repository_data was called

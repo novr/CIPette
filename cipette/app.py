@@ -28,7 +28,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 app = Flask(
     __name__,
     template_folder=str(BASE_DIR / 'templates'),
-    static_folder=str(BASE_DIR / 'static')
+    static_folder=str(BASE_DIR / 'static'),
 )
 
 logger = logging.getLogger(__name__)
@@ -54,10 +54,10 @@ def _format_time(seconds: float | None, units: list[tuple[str, int]]) -> str:
     for unit_name, unit_seconds in units:
         if remaining >= unit_seconds:
             value = remaining // unit_seconds
-            parts.append(f"{value}{unit_name}")
+            parts.append(f'{value}{unit_name}')
             remaining %= unit_seconds
 
-    return ' '.join(parts) or f"0{units[-1][0]}"
+    return ' '.join(parts) or f'0{units[-1][0]}'
 
 
 @app.template_filter('duration')
@@ -126,10 +126,10 @@ def get_available_repositories() -> list[str]:
             rows = cursor.fetchall()
             return [row['name'] for row in rows]
     except sqlite3.OperationalError as e:
-        logger.error(f"Database error: {e}")
+        logger.error(f'Database error: {e}')
         raise
     except Exception as e:
-        logger.error(f"Unexpected error fetching repositories: {e}")
+        logger.error(f'Unexpected error fetching repositories: {e}')
         raise
 
 
@@ -148,35 +148,34 @@ def dashboard() -> str:
     days = request.args.get('days', type=int)
     repository = request.args.get('repository', type=str)
 
-    logger.info(f"Dashboard accessed: days={days}, repository={repository}")
+    logger.info(f'Dashboard accessed: days={days}, repository={repository}')
 
     try:
         # Get metrics from database (with MTTR included via views)
         metrics = get_metrics_by_repository(repository=repository, days=days)
         repositories = get_available_repositories()
 
-        logger.info(f"Loaded {len(metrics)} metrics with workflow-level MTTR")
+        logger.info(f'Loaded {len(metrics)} metrics with workflow-level MTTR')
 
         return render_template(
             'dashboard.html',
             metrics=metrics,
             repositories=repositories,
             selected_days=days,
-            selected_repository=repository
+            selected_repository=repository,
         )
 
     except sqlite3.OperationalError:
-        logger.error("Database not found or not initialized")
+        logger.error('Database not found or not initialized')
         return render_template(
             'error.html',
-            error_message="Database not found. Please run 'cipette-collect' first."
+            error_message="Database not found. Please run 'cipette-collect' first.",
         ), 500
 
     except Exception as e:
-        logger.error(f"Error loading dashboard: {e}", exc_info=True)
+        logger.error(f'Error loading dashboard: {e}', exc_info=True)
         return render_template(
-            'error.html',
-            error_message="Failed to load dashboard metrics"
+            'error.html', error_message='Failed to load dashboard metrics'
         ), 500
 
 
@@ -185,19 +184,19 @@ def dashboard() -> str:
 def not_found(error: Exception) -> tuple[str, int]:
     """Handle 404 errors."""
     try:
-        return render_template('error.html', error_message="Page not found"), 404
+        return render_template('error.html', error_message='Page not found'), 404
     except Exception:
-        return "Page not found", 404
+        return 'Page not found', 404
 
 
 @app.errorhandler(500)
 def internal_error(error: Exception) -> tuple[str, int]:
     """Handle 500 errors."""
-    logger.error(f"Internal error: {error}", exc_info=True)
+    logger.error(f'Internal error: {error}', exc_info=True)
     try:
-        return render_template('error.html', error_message="Internal server error"), 500
+        return render_template('error.html', error_message='Internal server error'), 500
     except Exception:
-        return "Internal server error", 500
+        return 'Internal server error', 500
 
 
 # Background worker for MTTR cache refresh
@@ -207,10 +206,11 @@ def start_mttr_refresh_worker() -> None:
     Refresh interval is controlled by MTTR_REFRESH_INTERVAL environment variable.
     Default: 300 seconds (5 minutes)
     """
+
     def worker() -> None:
         # Get refresh interval from environment variable
         interval = Config.MTTR_REFRESH_INTERVAL
-        logger.info(f"MTTR cache refresh worker starting (interval: {interval}s)")
+        logger.info(f'MTTR cache refresh worker starting (interval: {interval}s)')
 
         # Initial delay to let Flask app fully start
         time.sleep(Config.MTTR_WORKER_INITIAL_DELAY)
@@ -219,16 +219,16 @@ def start_mttr_refresh_worker() -> None:
             try:
                 refresh_mttr_cache()
             except Exception as e:
-                logger.error(f"MTTR cache refresh failed: {e}", exc_info=True)
+                logger.error(f'MTTR cache refresh failed: {e}', exc_info=True)
                 # Continue despite errors
 
             # Wait for next refresh
             time.sleep(interval)
 
     # Start daemon thread (terminates when main thread exits)
-    thread = threading.Thread(target=worker, daemon=True, name="MTTRRefreshWorker")
+    thread = threading.Thread(target=worker, daemon=True, name='MTTRRefreshWorker')
     thread.start()
-    logger.info("MTTR cache refresh worker started")
+    logger.info('MTTR cache refresh worker started')
 
 
 # Main entry point
@@ -238,9 +238,9 @@ def main() -> None:
     host = os.getenv('FLASK_HOST', Config.WEB_HOST)
     port = int(os.getenv('FLASK_PORT', Config.WEB_DEFAULT_PORT))
 
-    logger.info("Starting CIPette web dashboard...")
-    logger.info(f"Access dashboard at: http://{host}:{port}")
-    logger.info(f"Debug mode: {debug}")
+    logger.info('Starting CIPette web dashboard...')
+    logger.info(f'Access dashboard at: http://{host}:{port}')
+    logger.info(f'Debug mode: {debug}')
 
     # Start background worker for MTTR cache refresh
     start_mttr_refresh_worker()

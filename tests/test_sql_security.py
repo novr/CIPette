@@ -7,7 +7,6 @@ import pytest
 from cipette.sql_security import (
     SafeSQLExecutor,
     SQLInjectionError,
-    safe_identifier_query,
     safe_pragma_set,
     validate_query_params,
 )
@@ -55,25 +54,35 @@ class TestSafeSQLExecutor:
 
     def test_validate_sql_string_safe(self):
         """Test validation of safe SQL strings."""
-        assert SafeSQLExecutor.validate_sql_string("SELECT * FROM workflows")
-        assert SafeSQLExecutor.validate_sql_string("INSERT INTO runs VALUES (?, ?)")
-        assert SafeSQLExecutor.validate_sql_string("UPDATE workflows SET name = ?")
+        assert SafeSQLExecutor.validate_sql_string('SELECT * FROM workflows')
+        assert SafeSQLExecutor.validate_sql_string('INSERT INTO runs VALUES (?, ?)')
+        assert SafeSQLExecutor.validate_sql_string('UPDATE workflows SET name = ?')
 
     def test_validate_sql_string_dangerous(self):
         """Test validation of dangerous SQL strings."""
-        assert not SafeSQLExecutor.validate_sql_string("SELECT * FROM workflows; DROP TABLE workflows")
-        assert not SafeSQLExecutor.validate_sql_string("SELECT * FROM workflows UNION SELECT * FROM users")
-        assert not SafeSQLExecutor.validate_sql_string("SELECT * FROM workflows OR 1=1")
-        assert not SafeSQLExecutor.validate_sql_string("SELECT * FROM workflows AND 1=1")
+        assert not SafeSQLExecutor.validate_sql_string(
+            'SELECT * FROM workflows; DROP TABLE workflows'
+        )
+        assert not SafeSQLExecutor.validate_sql_string(
+            'SELECT * FROM workflows UNION SELECT * FROM users'
+        )
+        assert not SafeSQLExecutor.validate_sql_string('SELECT * FROM workflows OR 1=1')
+        assert not SafeSQLExecutor.validate_sql_string(
+            'SELECT * FROM workflows AND 1=1'
+        )
         # Test comment patterns that could hide malicious code
-        assert not SafeSQLExecutor.validate_sql_string("SELECT * FROM workflows -- DROP TABLE")
-        assert not SafeSQLExecutor.validate_sql_string("SELECT * FROM workflows /* DROP TABLE */")
+        assert not SafeSQLExecutor.validate_sql_string(
+            'SELECT * FROM workflows -- DROP TABLE'
+        )
+        assert not SafeSQLExecutor.validate_sql_string(
+            'SELECT * FROM workflows /* DROP TABLE */'
+        )
 
     def test_safe_pragma_execute_valid(self):
         """Test safe PRAGMA execution with valid values."""
         mock_cursor = Mock()
         SafeSQLExecutor.safe_pragma_execute(mock_cursor, 'journal_mode', 'WAL')
-        mock_cursor.execute.assert_called_once_with("PRAGMA journal_mode = WAL")
+        mock_cursor.execute.assert_called_once_with('PRAGMA journal_mode = WAL')
 
     def test_safe_pragma_execute_invalid(self):
         """Test safe PRAGMA execution with invalid values."""
@@ -84,17 +93,15 @@ class TestSafeSQLExecutor:
     def test_safe_identifier_query_valid(self):
         """Test safe identifier query construction."""
         query = SafeSQLExecutor.safe_identifier_query(
-            "SELECT * FROM {identifier}",
-            "workflows"
+            'SELECT * FROM {identifier}', 'workflows'
         )
-        assert query == "SELECT * FROM workflows"
+        assert query == 'SELECT * FROM workflows'
 
     def test_safe_identifier_query_invalid(self):
         """Test safe identifier query construction with invalid identifier."""
         with pytest.raises(SQLInjectionError):
             SafeSQLExecutor.safe_identifier_query(
-                "SELECT * FROM {identifier}",
-                "workflows; DROP TABLE"
+                'SELECT * FROM {identifier}', 'workflows; DROP TABLE'
             )
 
 
@@ -105,7 +112,7 @@ class TestSafePragmaSet:
         """Test safe PRAGMA setting with valid values."""
         mock_cursor = Mock()
         safe_pragma_set(mock_cursor, 'journal_mode', 'WAL')
-        mock_cursor.execute.assert_called_once_with("PRAGMA journal_mode = WAL")
+        mock_cursor.execute.assert_called_once_with('PRAGMA journal_mode = WAL')
 
     def test_safe_pragma_set_invalid(self):
         """Test safe PRAGMA setting with invalid values."""
@@ -114,22 +121,26 @@ class TestSafePragmaSet:
             safe_pragma_set(mock_cursor, 'journal_mode', 'INVALID')
 
 
-
-
 class TestValidateQueryParams:
     """Test validate_query_params function."""
 
     def test_validate_query_params_safe_tuple(self):
         """Test validation of safe tuple parameters."""
-        assert validate_query_params(('workflow_id', 'repository_name', 'workflow_name'))
+        assert validate_query_params(
+            ('workflow_id', 'repository_name', 'workflow_name')
+        )
         assert validate_query_params((1, 2, 3))
         assert validate_query_params(('workflow_id', None, 'workflow_name'))
 
     def test_validate_query_params_dangerous_tuple(self):
         """Test validation of dangerous tuple parameters."""
         assert not validate_query_params(('workflow_id; DROP TABLE', 'repository_name'))
-        assert not validate_query_params(('workflow_id', 'repository_name-- DROP TABLE', 'workflow_name'))
-        assert not validate_query_params(('workflow_id', 'repository_name/* DROP TABLE */', 'workflow_name'))
+        assert not validate_query_params(
+            ('workflow_id', 'repository_name-- DROP TABLE', 'workflow_name')
+        )
+        assert not validate_query_params(
+            ('workflow_id', 'repository_name/* DROP TABLE */', 'workflow_name')
+        )
 
     def test_validate_query_params_safe_dict(self):
         """Test validation of safe dictionary parameters."""
@@ -154,6 +165,6 @@ class TestSQLInjectionError:
 
     def test_sql_injection_error_creation(self):
         """Test SQLInjectionError creation."""
-        error = SQLInjectionError("Test error")
-        assert str(error) == "Test error"
+        error = SQLInjectionError('Test error')
+        assert str(error) == 'Test error'
         assert isinstance(error, Exception)
