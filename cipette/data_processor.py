@@ -126,7 +126,7 @@ class DataProcessor:
                     )
                 )
 
-            except (KeyError, ValueError, TypeError) as e:
+            except (KeyError, ValueError, TypeError, IndexError) as e:
                 logger.warning(f'Skipping malformed run data: {e}')
                 continue
 
@@ -187,7 +187,7 @@ class DataProcessor:
                     )
                 )
 
-            except (AttributeError, TypeError, ValueError) as e:
+            except (AttributeError, TypeError, ValueError, IndexError) as e:
                 logger.warning(f'Skipping malformed run data: {e}')
                 continue
 
