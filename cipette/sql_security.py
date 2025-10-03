@@ -1,7 +1,6 @@
-"""SQL security utilities for safe database operations."""
+"""SQL security utilities for safe database operations using prepared statements."""
 
 import logging
-import re
 import sqlite3
 from typing import Any
 
@@ -15,7 +14,7 @@ class SQLInjectionError(Exception):
 
 
 class SafeSQLExecutor:
-    """Safe SQL executor with injection protection."""
+    """Safe SQL executor using prepared statements for injection protection."""
 
     # Allowed PRAGMA values for SQLite configuration
     ALLOWED_PRAGMA_VALUES = {
@@ -26,12 +25,6 @@ class SafeSQLExecutor:
         'cache_size': None,  # Integer values
         'user_version': None,  # Integer values
     }
-
-    # Allowed table names (alphanumeric and underscore only)
-    TABLE_NAME_PATTERN = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
-
-    # Allowed column names (alphanumeric and underscore only)
-    COLUMN_NAME_PATTERN = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
 
     @classmethod
     def validate_pragma_value(cls, pragma_name: str, value: Any) -> bool:
@@ -49,45 +42,18 @@ class SafeSQLExecutor:
             return False
 
         allowed_values = cls.ALLOWED_PRAGMA_VALUES[pragma_name]
-
         if allowed_values is None:
             # Integer values
-            try:
-                int(value)
-                return True
-            except (ValueError, TypeError):
-                return False
+            return isinstance(value, int)
         else:
-            # String values from allowed set
-            return str(value).upper() in allowed_values
-
-    @classmethod
-    def validate_identifier(
-        cls, identifier: str, identifier_type: str = 'identifier'
-    ) -> bool:
-        """Validate SQL identifier (table name, column name, etc.).
-
-        Args:
-            identifier: Identifier to validate
-            identifier_type: Type of identifier for error messages
-
-        Returns:
-            True if valid, False otherwise
-        """
-        if not isinstance(identifier, str):
-            return False
-
-        if not cls.TABLE_NAME_PATTERN.match(identifier):
-            logger.warning(f'Invalid {identifier_type}: {identifier}')
-            return False
-
-        return True
+            # String values
+            return isinstance(value, str) and value.upper() in allowed_values
 
     @classmethod
     def safe_pragma_execute(
         cls, cursor: sqlite3.Cursor, pragma_name: str, value: Any
     ) -> None:
-        """Safely execute a PRAGMA statement.
+        """Safely execute PRAGMA statement with validation.
 
         Args:
             cursor: Database cursor
@@ -95,168 +61,140 @@ class SafeSQLExecutor:
             value: Value to set
 
         Raises:
-            SQLInjectionError: If validation fails
+            SQLInjectionError: If pragma name or value is invalid
         """
         if not cls.validate_pragma_value(pragma_name, value):
-            raise SQLInjectionError(f'Invalid PRAGMA value: {pragma_name}={value}')
+            raise SQLInjectionError(f'Invalid PRAGMA: {pragma_name} = {value}')
 
-        # PRAGMA statements don't support parameterized queries, but we've validated the values
+        # PRAGMA statements don't support prepared statements in SQLite
+        # Use string formatting with validation instead
         cursor.execute(f'PRAGMA {pragma_name} = {value}')
 
     @classmethod
-    def safe_identifier_query(
-        cls, query_template: str, identifier: str, **params
-    ) -> str:
-        """Safely construct a query with an identifier.
-
-        Args:
-            query_template: Query template with {identifier} placeholder
-            identifier: Identifier to insert
-            **params: Additional parameters for the query
-
-        Returns:
-            Safe query string
-
-        Raises:
-            SQLInjectionError: If identifier is invalid
-        """
-        if not cls.validate_identifier(identifier):
-            raise SQLInjectionError(f'Invalid identifier: {identifier}')
-
-        return query_template.format(identifier=identifier)
-
-    @classmethod
-    def validate_sql_string(cls, sql_string: str) -> bool:
-        """Validate SQL string for potential injection patterns.
-
-        Args:
-            sql_string: SQL string to validate
-
-        Returns:
-            True if safe, False if potential injection detected
-        """
-        # Check for common injection patterns
-        dangerous_patterns = [
-            r';\s*(DROP|DELETE|INSERT|UPDATE|ALTER|CREATE)',
-            r'UNION\s+SELECT',
-            r'--\s*$',
-            r'/\*.*\*/',
-            r'OR\s+1\s*=\s*1',
-            r'AND\s+1\s*=\s*1',
-            r'EXEC\s*\(',
-            r'EXECUTE\s*\(',
-            r'SCRIPT\s*',
-        ]
-
-        sql_upper = sql_string.upper()
-        for pattern in dangerous_patterns:
-            if re.search(pattern, sql_upper, re.IGNORECASE):
-                logger.warning(f'Potential SQL injection detected: {pattern}')
-                return False
-
-        # Check for comment patterns that could hide malicious code
-        comment_patterns = [
-            r'--\s*DROP',
-            r'--\s*DELETE',
-            r'--\s*INSERT',
-            r'--\s*UPDATE',
-            r'--\s*ALTER',
-            r'--\s*CREATE',
-            r'/\*.*DROP.*\*/',
-            r'/\*.*DELETE.*\*/',
-            r'/\*.*INSERT.*\*/',
-            r'/\*.*UPDATE.*\*/',
-            r'/\*.*ALTER.*\*/',
-            r'/\*.*CREATE.*\*/',
-        ]
-
-        for pattern in comment_patterns:
-            if re.search(pattern, sql_string, re.IGNORECASE):
-                logger.warning(f'Potential SQL injection detected: {pattern}')
-                return False
-
-        return True
-
-    @classmethod
     def safe_execute(
-        cls, cursor: sqlite3.Cursor, query: str, params: tuple = None
-    ) -> None:
-        """Safely execute a SQL query with parameter validation.
+        cls, cursor: sqlite3.Cursor, query: str, params: tuple | dict | None = None
+    ) -> sqlite3.Cursor:
+        """Safely execute SQL query using prepared statements.
 
         Args:
             cursor: Database cursor
-            query: SQL query string
-            params: Query parameters
+            query: SQL query with placeholders
+            params: Parameters for the query
+
+        Returns:
+            Cursor with executed query
 
         Raises:
-            SQLInjectionError: If query is unsafe
+            SQLInjectionError: If SQL execution fails
         """
-        if not cls.validate_sql_string(query):
-            raise SQLInjectionError(f'Unsafe SQL query detected: {query}')
+        try:
+            if params is None:
+                return cursor.execute(query)
+            else:
+                return cursor.execute(query, params)
+        except sqlite3.Error as e:
+            logger.error(f'SQL execution error: {e}')
+            raise SQLInjectionError(f'SQL execution failed: {e}') from e
 
-        if params:
-            cursor.execute(query, params)
-        else:
-            cursor.execute(query)
+    @classmethod
+    def safe_executemany(
+        cls, cursor: sqlite3.Cursor, query: str, params_list: list[tuple | dict]
+    ) -> sqlite3.Cursor:
+        """Safely execute SQL query multiple times using prepared statements.
 
+        Args:
+            cursor: Database cursor
+            query: SQL query with placeholders
+            params_list: List of parameter sets
 
-def safe_pragma_set(cursor: sqlite3.Cursor, pragma_name: str, value: Any) -> None:
-    """Safely set a PRAGMA value.
+        Returns:
+            Cursor with executed query
 
-    Args:
-        cursor: Database cursor
-        pragma_name: Name of the PRAGMA
-        value: Value to set
-
-    Raises:
-        SQLInjectionError: If validation fails
-    """
-    SafeSQLExecutor.safe_pragma_execute(cursor, pragma_name, value)
-
-
-def safe_identifier_query(query_template: str, identifier: str, **params) -> str:
-    """Safely construct a query with an identifier.
-
-    Args:
-        query_template: Query template with {identifier} placeholder
-        identifier: Identifier to insert
-        **params: Additional parameters for the query
-
-    Returns:
-        Safe query string
-
-    Raises:
-        SQLInjectionError: If identifier is invalid
-    """
-    return SafeSQLExecutor.safe_identifier_query(query_template, identifier, **params)
+        Raises:
+            SQLInjectionError: If SQL execution fails
+        """
+        try:
+            return cursor.executemany(query, params_list)
+        except sqlite3.Error as e:
+            logger.error(f'SQL execution error: {e}')
+            raise SQLInjectionError(f'SQL execution failed: {e}') from e
 
 
-def validate_query_params(params: tuple | list | dict) -> bool:
-    """Validate query parameters for safety.
+class SafePragmaSet:
+    """Safe PRAGMA setter with validation."""
 
-    Args:
-        params: Query parameters to validate
+    @classmethod
+    def safe_pragma_set(
+        cls, cursor: sqlite3.Cursor, pragma_name: str, value: Any
+    ) -> None:
+        """Safely set PRAGMA value with validation.
 
-    Returns:
-        True if safe, False if potential injection detected
-    """
-    if not params:
+        Args:
+            cursor: Database cursor
+            pragma_name: Name of the PRAGMA
+            value: Value to set
+
+        Raises:
+            SQLInjectionError: If pragma name or value is invalid
+        """
+        SafeSQLExecutor.safe_pragma_execute(cursor, pragma_name, value)
+
+
+class ValidateQueryParams:
+    """Query parameter validation utilities."""
+
+    @classmethod
+    def validate_query_params(cls, params: tuple | dict | None) -> bool:
+        """Validate query parameters for safety.
+
+        Args:
+            params: Query parameters
+
+        Returns:
+            True if parameters are safe, False otherwise
+        """
+        if params is None:
+            return True
+
+        if isinstance(params, (tuple, list)):
+            for param in params:
+                if not cls._is_safe_parameter(param):
+                    return False
+        elif isinstance(params, dict):
+            for key, value in params.items():
+                if not cls._is_safe_parameter(key) or not cls._is_safe_parameter(value):
+                    return False
+
         return True
 
-    if isinstance(params, (tuple, list)):
-        for param in params:
-            if isinstance(param, str) and not SafeSQLExecutor.validate_sql_string(
-                param
-            ):
-                # Check for SQL injection patterns in string parameters
-                return False
-    elif isinstance(params, dict):
-        for key, value in params.items():
-            if not SafeSQLExecutor.validate_identifier(key, 'parameter name'):
-                return False
-            if isinstance(value, str) and not SafeSQLExecutor.validate_sql_string(
-                value
-            ):
-                return False
+    @classmethod
+    def _is_safe_parameter(cls, param: Any) -> bool:
+        """Check if a single parameter is safe.
 
-    return True
+        Args:
+            param: Parameter to check
+
+        Returns:
+            True if parameter is safe, False otherwise
+        """
+        if isinstance(param, str):
+            # Check for SQL injection patterns in string parameters
+            # Only flag patterns that are clearly malicious, not legitimate SQL keywords
+            dangerous_patterns = [';', '--', '/*', '*/', '; DROP', '; DELETE', '; INSERT', '; UPDATE', '; ALTER', '; CREATE']
+            param_upper = param.upper()
+            for pattern in dangerous_patterns:
+                if pattern in param_upper:
+                    logger.warning(f'Potentially dangerous parameter detected: {pattern}')
+                    return False
+        elif isinstance(param, (int, float, bool, type(None))):
+            # Numeric and boolean values are generally safe
+            return True
+        elif hasattr(param, 'isoformat'):
+            # datetime objects are safe
+            return True
+        else:
+            # Other types might be unsafe
+            logger.warning(f'Unknown parameter type: {type(param)}')
+            return False
+
+        return True
