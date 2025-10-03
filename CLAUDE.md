@@ -31,10 +31,6 @@ git clone https://github.com/novr/CIPette
 cd CIPette
 uv sync  # Creates virtual environment automatically
 
-# Setup
-echo "GITHUB_TOKEN=your_token" > .env
-echo "TARGET_REPOSITORIES=owner/repo" >> .env
-
 # Run
 uv run cipette-collect  # Get data
 uv run cipette-web      # View dashboard
