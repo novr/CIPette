@@ -95,8 +95,8 @@ class SafeSQLExecutor:
         if not cls.validate_pragma_value(pragma_name, value):
             raise SQLInjectionError(f"Invalid PRAGMA value: {pragma_name}={value}")
 
-        # Use parameterized query for safety
-        cursor.execute(f"PRAGMA {pragma_name} = ?", (value,))
+        # PRAGMA statements don't support parameterized queries, but we've validated the values
+        cursor.execute(f"PRAGMA {pragma_name} = {value}")
 
     @classmethod
     def safe_identifier_query(cls, query_template: str, identifier: str, **params) -> str:

@@ -14,9 +14,8 @@ def test_db():
     test_db_path = tempfile.mktemp(suffix='.db')
 
     # Temporarily override DATABASE_PATH
-    original_path = config.DATABASE_PATH
-    config.DATABASE_PATH = test_db_path
-    database.DATABASE_PATH = test_db_path
+    original_path = config.Config.DATABASE_PATH
+    config.Config.DATABASE_PATH = test_db_path
 
     # Clear the metrics cache to prevent cross-test contamination
     database._get_metrics_cached.cache_clear()
@@ -27,8 +26,7 @@ def test_db():
     yield test_db_path
 
     # Cleanup
-    config.DATABASE_PATH = original_path
-    database.DATABASE_PATH = original_path
+    config.Config.DATABASE_PATH = original_path
     if os.path.exists(test_db_path):
         os.remove(test_db_path)
 

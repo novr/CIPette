@@ -45,6 +45,23 @@ class GitHubDataCollector:
         """Save ETag for a specific repository."""
         self.etag_manager.save_etag_for_repo(repo_name, etag, timestamp)
 
+    def save_last_run_info(self, repo_data: dict) -> None:
+        """Save last run information to cache file."""
+        self.etag_manager.save_last_run_info(repo_data)
+
+    def parse_datetime(self, dt: datetime | None) -> str | None:
+        """Parse datetime object to string format.
+        
+        Args:
+            dt: Datetime object to parse
+            
+        Returns:
+            Formatted datetime string or None
+        """
+        if dt is None:
+            return None
+        return dt.strftime('%Y-%m-%d %H:%M:%S')
+
     def make_graphql_request(self, query: str, variables: dict[str, object], etag: str | None = None) -> tuple[dict[str, object], str]:
         """Make a GraphQL request to GitHub API with optional ETag."""
         return self.github_client.make_graphql_request(query, variables, etag)

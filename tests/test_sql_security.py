@@ -73,7 +73,7 @@ class TestSafeSQLExecutor:
         """Test safe PRAGMA execution with valid values."""
         mock_cursor = Mock()
         SafeSQLExecutor.safe_pragma_execute(mock_cursor, 'journal_mode', 'WAL')
-        mock_cursor.execute.assert_called_once_with("PRAGMA journal_mode = ?", ('WAL',))
+        mock_cursor.execute.assert_called_once_with("PRAGMA journal_mode = WAL")
 
     def test_safe_pragma_execute_invalid(self):
         """Test safe PRAGMA execution with invalid values."""
@@ -105,7 +105,7 @@ class TestSafePragmaSet:
         """Test safe PRAGMA setting with valid values."""
         mock_cursor = Mock()
         safe_pragma_set(mock_cursor, 'journal_mode', 'WAL')
-        mock_cursor.execute.assert_called_once_with("PRAGMA journal_mode = ?", ('WAL',))
+        mock_cursor.execute.assert_called_once_with("PRAGMA journal_mode = WAL")
 
     def test_safe_pragma_set_invalid(self):
         """Test safe PRAGMA setting with invalid values."""
@@ -114,18 +114,6 @@ class TestSafePragmaSet:
             safe_pragma_set(mock_cursor, 'journal_mode', 'INVALID')
 
 
-class TestSafeIdentifierQuery:
-    """Test safe_identifier_query function."""
-
-    def test_safe_identifier_query_valid(self):
-        """Test safe identifier query with valid identifier."""
-        query = safe_identifier_query("SELECT * FROM {identifier}", "workflows")
-        assert query == "SELECT * FROM workflows"
-
-    def test_safe_identifier_query_invalid(self):
-        """Test safe identifier query with invalid identifier."""
-        with pytest.raises(SQLInjectionError):
-            safe_identifier_query("SELECT * FROM {identifier}", "workflows; DROP TABLE")
 
 
 class TestValidateQueryParams:

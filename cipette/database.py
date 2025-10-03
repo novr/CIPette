@@ -76,19 +76,7 @@ def initialize_database() -> None:
     """Create database tables if they don't exist."""
     with get_connection() as conn:
         cursor = conn.cursor()
-
-        # Check if database needs migration
-        try:
-            cursor.execute("PRAGMA user_version")
-            version = cursor.fetchone()[0]
-            if version < 2:
-                logger.info("Database needs migration to normalized schema")
-                from cipette.schema_migration import migrate_database
-                migrate_database()
-                return
-        except sqlite3.OperationalError:
-            # No version table exists, create legacy schema first
-            pass
+        logger.info(f"Database connection established: {Config.DATABASE_PATH}")
 
         # Repositories table
         cursor.execute('''
@@ -231,8 +219,8 @@ def initialize_database() -> None:
             GROUP BY repo.name, w.id, w.name
         ''')
 
-    # MTTR view for real-time calculation
-    cursor.execute('''
+        # MTTR view for real-time calculation
+        cursor.execute('''
         CREATE VIEW IF NOT EXISTS mttr_view AS
         SELECT
             r1.workflow_id,
@@ -249,10 +237,10 @@ def initialize_database() -> None:
             AND r1.status = 'completed'
             AND r2.completed_at IS NOT NULL
         GROUP BY r1.workflow_id
-    ''')
+        ''')
 
-    # MTTR cache table for background job computation
-    cursor.execute('''
+        # MTTR cache table for background job computation
+        cursor.execute('''
         CREATE TABLE IF NOT EXISTS mttr_cache (
             workflow_id TEXT PRIMARY KEY,
             mttr_seconds REAL,
@@ -260,15 +248,15 @@ def initialize_database() -> None:
             calculated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (workflow_id) REFERENCES workflows (id)
         )
-    ''')
+        ''')
 
-    # Index for cache staleness checks
-    cursor.execute('''
-        CREATE INDEX IF NOT EXISTS idx_mttr_cache_calculated
-        ON mttr_cache (calculated_at)
-    ''')
+        # Index for cache staleness checks
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_mttr_cache_calculated
+            ON mttr_cache (calculated_at)
+        ''')
 
-    conn.commit()
+        conn.commit()
     logger.info("Database initialized successfully.")
 
 
@@ -557,7 +545,12 @@ def get_workflows() -> list[sqlite3.Row]:
     """Retrieve all workflows."""
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute('SELECT * FROM workflows ORDER BY repository, name')
+        cursor.execute('''
+            SELECT w.*, r.name as repository
+            FROM workflows w
+            JOIN repositories r ON w.repository_id = r.id
+            ORDER BY r.name, w.name
+        ''')
         workflows = cursor.fetchall()
         return workflows
 
@@ -579,10 +572,10 @@ def get_runs(workflow_id: str | None = None, limit: int | None = None, repositor
         conditions = []
         params = []
 
-        # Join with workflows if filtering by repository
+        # Join with workflows and repositories if filtering by repository
         if repository:
-            query += ' JOIN workflows w ON r.workflow_id = w.id'
-            conditions.append('w.repository = ?')
+            query += ' JOIN workflows w ON r.workflow_id = w.id JOIN repositories repo ON w.repository_id = repo.id'
+            conditions.append('repo.name = ?')
             params.append(repository)
 
         if workflow_id:
@@ -628,7 +621,7 @@ def _build_metrics_query(repository: str | None = None, days: int | None = None)
     if days and (not isinstance(days, int) or days <= 0):
         raise ValueError("Invalid days parameter - must be positive integer")
     # Common metric aggregations (avoid duplication)
-    metrics_select = '''
+    metrics_select = f'''
         COUNT(*) as total_runs,
         SUM(CASE WHEN r.conclusion = 'success' THEN 1 ELSE 0 END) as success_count,
         SUM(CASE WHEN r.conclusion = 'failure' THEN 1 ELSE 0 END) as failure_count,
@@ -675,7 +668,7 @@ def _build_metrics_query(repository: str | None = None, days: int | None = None)
         params.append(days)  # For MTTR subquery
 
     if repository:
-        where_conditions.append("w.repository = ?")
+        where_conditions.append("repo.name = ?")
         params.append(repository)
 
     where_clause = " AND ".join(where_conditions)
@@ -683,10 +676,14 @@ def _build_metrics_query(repository: str | None = None, days: int | None = None)
     # Build JOIN clause (add mttr_cache for all-time queries)
     if days:
         # Period-filtered: No cache join needed
-        joins = 'LEFT JOIN runs r ON w.id = r.workflow_id'
+        joins = '''
+            JOIN repositories repo ON w.repository_id = repo.id
+            LEFT JOIN runs r ON w.id = r.workflow_id
+        '''
     else:
         # All-time: Join with cache table
         joins = '''
+            JOIN repositories repo ON w.repository_id = repo.id
             LEFT JOIN runs r ON w.id = r.workflow_id
             LEFT JOIN mttr_cache c ON w.id = c.workflow_id
         '''
@@ -694,7 +691,7 @@ def _build_metrics_query(repository: str | None = None, days: int | None = None)
     # Unified query for all cases
     query = f'''
         SELECT
-            w.repository,
+            repo.name as repository,
             w.name as workflow_name,
             w.id as workflow_id,
             {metrics_select},
@@ -702,8 +699,8 @@ def _build_metrics_query(repository: str | None = None, days: int | None = None)
         FROM workflows w
         {joins}
         WHERE {where_clause}
-        GROUP BY w.repository, w.id, w.name
-        ORDER BY w.repository, w.name
+        GROUP BY repo.name, w.id, w.name
+        ORDER BY repo.name, w.name
     '''
 
     return query, params
@@ -795,7 +792,7 @@ def calculate_mttr(workflow_id: str | None = None, repository: str | None = None
             params.append(workflow_id)
 
         if repository:
-            filters.append("w.repository = ?")
+            filters.append("repo.name = ?")
             params.append(repository)
 
         if days:
@@ -804,9 +801,9 @@ def calculate_mttr(workflow_id: str | None = None, repository: str | None = None
 
         where_clause = " AND ".join(filters)
 
-        # Need to join workflows for repository filter
+        # Need to join workflows and repositories for repository filter
         if repository:
-            from_clause = "FROM runs r1 JOIN workflows w ON r1.workflow_id = w.id"
+            from_clause = "FROM runs r1 JOIN workflows w ON r1.workflow_id = w.id JOIN repositories repo ON w.repository_id = repo.id"
         else:
             from_clause = "FROM runs r1"
 

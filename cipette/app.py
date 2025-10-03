@@ -122,9 +122,9 @@ def get_available_repositories() -> list[str]:
     try:
         with get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute('SELECT DISTINCT repository FROM workflows ORDER BY repository')
+            cursor.execute('SELECT DISTINCT name FROM repositories ORDER BY name')
             rows = cursor.fetchall()
-            return [row['repository'] for row in rows]
+            return [row['name'] for row in rows]
     except sqlite3.OperationalError as e:
         logger.error(f"Database error: {e}")
         raise
