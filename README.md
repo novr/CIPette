@@ -27,15 +27,14 @@ uv sync  # Creates virtual environment automatically
 
 ### 2. Configure
 
-Create `.env` file:
+Copy the example configuration and update with your values:
 
 ```bash
-# Get token from: https://github.com/settings/tokens
-GITHUB_TOKEN=ghp_your_token_here
-
-# Repositories to analyze
-TARGET_REPOSITORIES=owner/repo1,owner/repo2
+cp env.example .env
+# Edit .env with your GitHub token and repositories
 ```
+
+> 📋 **See `env.example` for all available configuration options**
 
 ### 3. Run
 
