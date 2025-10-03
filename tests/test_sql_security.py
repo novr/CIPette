@@ -1,5 +1,6 @@
 """Tests for SQL security utilities."""
 
+from datetime import datetime
 from unittest.mock import Mock
 
 import pytest
@@ -170,3 +171,78 @@ class TestSQLInjectionError:
         """Test SQLInjectionError creation."""
         error = SQLInjectionError('Test error message')
         assert str(error) == 'Test error message'
+
+    def test_validate_pragma_value_edge_cases(self):
+        """Test edge cases for PRAGMA value validation."""
+        # Test unknown PRAGMA names
+        assert not SafeSQLExecutor.validate_pragma_value('unknown_pragma', 'value')
+
+        # Test boundary values
+        assert SafeSQLExecutor.validate_pragma_value('busy_timeout', 0)
+        assert SafeSQLExecutor.validate_pragma_value('busy_timeout', -1)
+        assert SafeSQLExecutor.validate_pragma_value('cache_size', 0)
+
+        # Test case sensitivity
+        assert SafeSQLExecutor.validate_pragma_value('journal_mode', 'wal')  # lowercase
+        assert SafeSQLExecutor.validate_pragma_value('journal_mode', 'WAL')  # uppercase
+
+    def test_safe_executemany_with_empty_params(self):
+        """Test safe_executemany with empty parameter list."""
+        mock_cursor = Mock()
+        SafeSQLExecutor.safe_executemany(mock_cursor, 'SELECT 1', [])
+        mock_cursor.executemany.assert_called_once_with('SELECT 1', [])
+
+    def test_is_safe_parameter_comprehensive(self):
+        """Test _is_safe_parameter with various data types."""
+        # Test safe parameters
+        safe_params = [
+            123,
+            45.67,
+            True,
+            False,
+            None,
+            "normal_string",
+            "string_with_numbers123",
+            datetime.now(),
+        ]
+
+        for param in safe_params:
+            assert ValidateQueryParams._is_safe_parameter(param), f"False negative for safe parameter: {param}"
+
+    def test_is_safe_parameter_dangerous_strings(self):
+        """Test _is_safe_parameter with dangerous strings."""
+        dangerous_strings = [
+            "value; DROP TABLE users",
+            "value-- comment",
+            "value/* block comment */",
+            "value; DELETE FROM workflows",
+            "value; INSERT INTO malicious_table",
+            "value; UPDATE workflows SET name = 'hacked'",
+            "value; ALTER TABLE workflows ADD COLUMN malicious",
+            "value; CREATE TABLE malicious_table",
+        ]
+
+        for param in dangerous_strings:
+            assert not ValidateQueryParams._is_safe_parameter(param), f"False negative for dangerous parameter: {param}"
+
+    def test_validate_query_params_unicode(self):
+        """Test parameter validation with Unicode strings."""
+        unicode_params = [
+            '正常な文字列',
+            '🚀 rocket emoji',
+            'café',
+            'naïve',
+        ]
+
+        for param in unicode_params:
+            assert ValidateQueryParams._is_safe_parameter(param), f"Failed for Unicode parameter: {param}"
+
+    def test_validate_query_params_unicode_dangerous(self):
+        """Test SQL injection detection with Unicode strings."""
+        unicode_dangerous = [
+            '正常な文字列; DROP TABLE users',
+            '🚀 rocket; DELETE FROM workflows',
+        ]
+
+        for param in unicode_dangerous:
+            assert not ValidateQueryParams._is_safe_parameter(param), f"Failed to detect Unicode SQL injection: {param}"
