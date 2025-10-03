@@ -76,96 +76,159 @@ def initialize_database():
     with get_connection() as conn:
         cursor = conn.cursor()
 
-    # Workflows table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS workflows (
-            id TEXT PRIMARY KEY,
-            repository TEXT NOT NULL,
-            name TEXT NOT NULL,
-            path TEXT,
-            state TEXT
-        )
-    ''')
+        # Check if database needs migration
+        try:
+            cursor.execute("PRAGMA user_version")
+            version = cursor.fetchone()[0]
+            if version < 2:
+                logger.info("Database needs migration to normalized schema")
+                from cipette.schema_migration import migrate_database
+                migrate_database()
+                return
+        except sqlite3.OperationalError:
+            # No version table exists, create legacy schema first
+            pass
 
-    # Workflow runs table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS runs (
-            id TEXT PRIMARY KEY,
-            workflow_id TEXT NOT NULL,
-            run_number INTEGER,
-            commit_sha TEXT,
-            branch TEXT,
-            event TEXT,
-            status TEXT NOT NULL,
-            conclusion TEXT,
-            started_at DATETIME,
-            completed_at DATETIME,
-            duration_seconds INTEGER,
-            actor TEXT,
-            url TEXT,
-            FOREIGN KEY (workflow_id) REFERENCES workflows (id)
-        )
-    ''')
+        # Repositories table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS repositories (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT UNIQUE NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
 
-    # Create indexes for faster queries
-    cursor.execute('''
-        CREATE INDEX IF NOT EXISTS idx_runs_workflow_id
-        ON runs (workflow_id)
-    ''')
+        # Actors table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS actors (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                login TEXT UNIQUE NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
 
-    cursor.execute('''
-        CREATE INDEX IF NOT EXISTS idx_runs_status
-        ON runs (status)
-    ''')
+        # Events table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT UNIQUE NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
 
-    cursor.execute('''
-        CREATE INDEX IF NOT EXISTS idx_runs_completed_at
-        ON runs (completed_at)
-    ''')
+        # Branches table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS branches (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT UNIQUE NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
 
-    cursor.execute('''
-        CREATE INDEX IF NOT EXISTS idx_runs_repository
-        ON runs (workflow_id, started_at)
-    ''')
+        # Workflows table (normalized)
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS workflows (
+                id TEXT PRIMARY KEY,
+                repository_id INTEGER NOT NULL,
+                name TEXT NOT NULL,
+                path TEXT,
+                state TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (repository_id) REFERENCES repositories (id)
+            )
+        ''')
 
-    cursor.execute('''
-        CREATE INDEX IF NOT EXISTS idx_runs_conclusion
-        ON runs (conclusion)
-    ''')
+        # Workflow runs table (normalized)
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS runs (
+                id TEXT PRIMARY KEY,
+                workflow_id TEXT NOT NULL,
+                run_number INTEGER,
+                commit_sha TEXT,
+                branch_id INTEGER,
+                event_id INTEGER,
+                status TEXT NOT NULL,
+                conclusion TEXT,
+                started_at DATETIME,
+                completed_at DATETIME,
+                duration_seconds INTEGER,
+                actor_id INTEGER,
+                url TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (workflow_id) REFERENCES workflows (id),
+                FOREIGN KEY (branch_id) REFERENCES branches (id),
+                FOREIGN KEY (event_id) REFERENCES events (id),
+                FOREIGN KEY (actor_id) REFERENCES actors (id)
+            )
+        ''')
 
-    cursor.execute('''
-        CREATE INDEX IF NOT EXISTS idx_runs_branch
-        ON runs (branch)
-    ''')
+        # Create indexes for faster queries
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_workflows_repository
+            ON workflows (repository_id)
+        ''')
 
-    cursor.execute('''
-        CREATE INDEX IF NOT EXISTS idx_runs_event
-        ON runs (event)
-    ''')
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_runs_workflow_id
+            ON runs (workflow_id)
+        ''')
 
-    # Metrics view for real-time calculation
-    cursor.execute('''
-        CREATE VIEW IF NOT EXISTS workflow_metrics_view AS
-        SELECT
-            w.repository,
-            w.id as workflow_id,
-            w.name as workflow_name,
-            COUNT(*) as total_runs,
-            SUM(CASE WHEN r.conclusion = 'success' THEN 1 ELSE 0 END) as success_count,
-            SUM(CASE WHEN r.conclusion = 'failure' THEN 1 ELSE 0 END) as failure_count,
-            ROUND(AVG(r.duration_seconds), 2) as avg_duration_seconds,
-            ROUND(
-                CAST(SUM(CASE WHEN r.conclusion = 'success' THEN 1 ELSE 0 END) AS FLOAT) /
-                NULLIF(SUM(CASE WHEN r.conclusion IN ('success', 'failure') THEN 1 ELSE 0 END), 0) * 100,
-                2
-            ) as success_rate,
-            MIN(r.started_at) as first_run,
-            MAX(r.started_at) as last_run
-        FROM workflows w
-        LEFT JOIN runs r ON w.id = r.workflow_id
-        WHERE r.status = 'completed'
-        GROUP BY w.repository, w.id, w.name
-    ''')
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_runs_status
+            ON runs (status)
+        ''')
+
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_runs_completed_at
+            ON runs (completed_at)
+        ''')
+
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_runs_conclusion
+            ON runs (conclusion)
+        ''')
+
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_runs_branch
+            ON runs (branch_id)
+        ''')
+
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_runs_event
+            ON runs (event_id)
+        ''')
+
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_runs_actor
+            ON runs (actor_id)
+        ''')
+
+        # Metrics view for real-time calculation (normalized)
+        cursor.execute('''
+            CREATE VIEW IF NOT EXISTS workflow_metrics_view AS
+            SELECT
+                repo.name as repository,
+                w.id as workflow_id,
+                w.name as workflow_name,
+                COUNT(*) as total_runs,
+                SUM(CASE WHEN r.conclusion = 'success' THEN 1 ELSE 0 END) as success_count,
+                SUM(CASE WHEN r.conclusion = 'failure' THEN 1 ELSE 0 END) as failure_count,
+                ROUND(AVG(r.duration_seconds), 2) as avg_duration_seconds,
+                ROUND(
+                    CAST(SUM(CASE WHEN r.conclusion = 'success' THEN 1 ELSE 0 END) AS FLOAT) /
+                    NULLIF(SUM(CASE WHEN r.conclusion IN ('success', 'failure') THEN 1 ELSE 0 END), 0) * 100,
+                    2
+                ) as success_rate,
+                MIN(r.started_at) as first_run,
+                MAX(r.started_at) as last_run
+            FROM workflows w
+            JOIN repositories repo ON w.repository_id = repo.id
+            LEFT JOIN runs r ON w.id = r.workflow_id
+            WHERE r.status = 'completed'
+            GROUP BY repo.name, w.id, w.name
+        ''')
 
     # MTTR view for real-time calculation
     cursor.execute('''
@@ -224,15 +287,25 @@ def insert_workflow(workflow_id, repository, name, path=None, state=None, conn=N
         # Use provided connection (for batch operations)
         try:
             cursor = conn.cursor()
+            # Insert repository if not exists
             cursor.execute('''
-                INSERT INTO workflows (id, repository, name, path, state)
+                INSERT OR IGNORE INTO repositories (name) VALUES (?)
+            ''', (repository,))
+            
+            # Get repository ID
+            cursor.execute('SELECT id FROM repositories WHERE name = ?', (repository,))
+            repo_id = cursor.fetchone()[0]
+            
+            cursor.execute('''
+                INSERT INTO workflows (id, repository_id, name, path, state)
                 VALUES (?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
-                    repository = excluded.repository,
+                    repository_id = excluded.repository_id,
                     name = excluded.name,
                     path = excluded.path,
-                    state = excluded.state
-            ''', (workflow_id, repository, name, path, state))
+                    state = excluded.state,
+                    updated_at = CURRENT_TIMESTAMP
+            ''', (workflow_id, repo_id, name, path, state))
             return True
         except sqlite3.OperationalError as e:
             if "database is locked" in str(e):
@@ -244,15 +317,25 @@ def insert_workflow(workflow_id, repository, name, path=None, state=None, conn=N
         try:
             with get_connection() as conn:
                 cursor = conn.cursor()
+                # Insert repository if not exists
                 cursor.execute('''
-                    INSERT INTO workflows (id, repository, name, path, state)
+                    INSERT OR IGNORE INTO repositories (name) VALUES (?)
+                ''', (repository,))
+                
+                # Get repository ID
+                cursor.execute('SELECT id FROM repositories WHERE name = ?', (repository,))
+                repo_id = cursor.fetchone()[0]
+                
+                cursor.execute('''
+                    INSERT INTO workflows (id, repository_id, name, path, state)
                     VALUES (?, ?, ?, ?, ?)
                     ON CONFLICT(id) DO UPDATE SET
-                        repository = excluded.repository,
+                        repository_id = excluded.repository_id,
                         name = excluded.name,
                         path = excluded.path,
-                        state = excluded.state
-                ''', (workflow_id, repository, name, path, state))
+                        state = excluded.state,
+                        updated_at = CURRENT_TIMESTAMP
+                ''', (workflow_id, repo_id, name, path, state))
                 return True
         except sqlite3.OperationalError as e:
             if "database is locked" in str(e):
@@ -267,26 +350,52 @@ def insert_run(run_id, workflow_id, run_number, commit_sha, branch, event, statu
     with get_connection() as conn:
         cursor = conn.cursor()
 
+        # Insert normalized entities if they don't exist
+        branch_id = None
+        if branch:
+            cursor.execute('INSERT OR IGNORE INTO branches (name) VALUES (?)', (branch,))
+            cursor.execute('SELECT id FROM branches WHERE name = ?', (branch,))
+            result = cursor.fetchone()
+            if result:
+                branch_id = result[0]
+
+        event_id = None
+        if event:
+            cursor.execute('INSERT OR IGNORE INTO events (name) VALUES (?)', (event,))
+            cursor.execute('SELECT id FROM events WHERE name = ?', (event,))
+            result = cursor.fetchone()
+            if result:
+                event_id = result[0]
+
+        actor_id = None
+        if actor:
+            cursor.execute('INSERT OR IGNORE INTO actors (login) VALUES (?)', (actor,))
+            cursor.execute('SELECT id FROM actors WHERE login = ?', (actor,))
+            result = cursor.fetchone()
+            if result:
+                actor_id = result[0]
+
         cursor.execute('''
             INSERT INTO runs
-            (id, workflow_id, run_number, commit_sha, branch, event, status, conclusion,
-             started_at, completed_at, duration_seconds, actor, url)
+            (id, workflow_id, run_number, commit_sha, branch_id, event_id, status, conclusion,
+             started_at, completed_at, duration_seconds, actor_id, url)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 workflow_id = excluded.workflow_id,
                 run_number = excluded.run_number,
                 commit_sha = excluded.commit_sha,
-                branch = excluded.branch,
-                event = excluded.event,
+                branch_id = excluded.branch_id,
+                event_id = excluded.event_id,
                 status = excluded.status,
                 conclusion = excluded.conclusion,
                 started_at = excluded.started_at,
                 completed_at = excluded.completed_at,
                 duration_seconds = excluded.duration_seconds,
-                actor = excluded.actor,
-                url = excluded.url
-        ''', (run_id, workflow_id, run_number, commit_sha, branch, event, status, conclusion,
-              started_at, completed_at, duration_seconds, actor, url))
+                actor_id = excluded.actor_id,
+                url = excluded.url,
+                updated_at = CURRENT_TIMESTAMP
+        ''', (run_id, workflow_id, run_number, commit_sha, branch_id, event_id, status, conclusion,
+              started_at, completed_at, duration_seconds, actor_id, url))
 
 
 @retry_database_operation(max_retries=3)
@@ -309,26 +418,57 @@ def insert_runs_batch(runs_data, conn=None):
         # Use provided connection (for batch operations)
         try:
             cursor = conn.cursor()
-            # Use executemany for better performance with ON CONFLICT for upsert
-            cursor.executemany('''
-                INSERT INTO runs
-                (id, workflow_id, run_number, commit_sha, branch, event, status, conclusion,
-                 started_at, completed_at, duration_seconds, actor, url)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(id) DO UPDATE SET
-                    workflow_id = excluded.workflow_id,
-                    run_number = excluded.run_number,
-                    commit_sha = excluded.commit_sha,
-                    branch = excluded.branch,
-                    event = excluded.event,
-                    status = excluded.status,
-                    conclusion = excluded.conclusion,
-                    started_at = excluded.started_at,
-                    completed_at = excluded.completed_at,
-                    duration_seconds = excluded.duration_seconds,
-                    actor = excluded.actor,
-                    url = excluded.url
-            ''', runs_data)
+            # Process each run individually to handle normalized entities
+            for run_data in runs_data:
+                (run_id, workflow_id, run_number, commit_sha, branch, event, status, conclusion,
+                 started_at, completed_at, duration_seconds, actor, url) = run_data
+                
+                # Insert normalized entities
+                branch_id = None
+                if branch:
+                    cursor.execute('INSERT OR IGNORE INTO branches (name) VALUES (?)', (branch,))
+                    cursor.execute('SELECT id FROM branches WHERE name = ?', (branch,))
+                    result = cursor.fetchone()
+                    if result:
+                        branch_id = result[0]
+
+                event_id = None
+                if event:
+                    cursor.execute('INSERT OR IGNORE INTO events (name) VALUES (?)', (event,))
+                    cursor.execute('SELECT id FROM events WHERE name = ?', (event,))
+                    result = cursor.fetchone()
+                    if result:
+                        event_id = result[0]
+
+                actor_id = None
+                if actor:
+                    cursor.execute('INSERT OR IGNORE INTO actors (login) VALUES (?)', (actor,))
+                    cursor.execute('SELECT id FROM actors WHERE login = ?', (actor,))
+                    result = cursor.fetchone()
+                    if result:
+                        actor_id = result[0]
+
+                cursor.execute('''
+                    INSERT INTO runs
+                    (id, workflow_id, run_number, commit_sha, branch_id, event_id, status, conclusion,
+                     started_at, completed_at, duration_seconds, actor_id, url)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(id) DO UPDATE SET
+                        workflow_id = excluded.workflow_id,
+                        run_number = excluded.run_number,
+                        commit_sha = excluded.commit_sha,
+                        branch_id = excluded.branch_id,
+                        event_id = excluded.event_id,
+                        status = excluded.status,
+                        conclusion = excluded.conclusion,
+                        started_at = excluded.started_at,
+                        completed_at = excluded.completed_at,
+                        duration_seconds = excluded.duration_seconds,
+                        actor_id = excluded.actor_id,
+                        url = excluded.url,
+                        updated_at = CURRENT_TIMESTAMP
+                ''', (run_id, workflow_id, run_number, commit_sha, branch_id, event_id, status, conclusion,
+                      started_at, completed_at, duration_seconds, actor_id, url))
             return True
         except sqlite3.OperationalError as e:
             if "database is locked" in str(e):
@@ -340,26 +480,57 @@ def insert_runs_batch(runs_data, conn=None):
         try:
             with get_connection() as conn:
                 cursor = conn.cursor()
-                # Use executemany for better performance with ON CONFLICT for upsert
-                cursor.executemany('''
-                    INSERT INTO runs
-                    (id, workflow_id, run_number, commit_sha, branch, event, status, conclusion,
-                     started_at, completed_at, duration_seconds, actor, url)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ON CONFLICT(id) DO UPDATE SET
-                        workflow_id = excluded.workflow_id,
-                        run_number = excluded.run_number,
-                        commit_sha = excluded.commit_sha,
-                        branch = excluded.branch,
-                        event = excluded.event,
-                        status = excluded.status,
-                        conclusion = excluded.conclusion,
-                        started_at = excluded.started_at,
-                        completed_at = excluded.completed_at,
-                        duration_seconds = excluded.duration_seconds,
-                        actor = excluded.actor,
-                        url = excluded.url
-                ''', runs_data)
+                # Process each run individually to handle normalized entities
+                for run_data in runs_data:
+                    (run_id, workflow_id, run_number, commit_sha, branch, event, status, conclusion,
+                     started_at, completed_at, duration_seconds, actor, url) = run_data
+                    
+                    # Insert normalized entities
+                    branch_id = None
+                    if branch:
+                        cursor.execute('INSERT OR IGNORE INTO branches (name) VALUES (?)', (branch,))
+                        cursor.execute('SELECT id FROM branches WHERE name = ?', (branch,))
+                        result = cursor.fetchone()
+                        if result:
+                            branch_id = result[0]
+
+                    event_id = None
+                    if event:
+                        cursor.execute('INSERT OR IGNORE INTO events (name) VALUES (?)', (event,))
+                        cursor.execute('SELECT id FROM events WHERE name = ?', (event,))
+                        result = cursor.fetchone()
+                        if result:
+                            event_id = result[0]
+
+                    actor_id = None
+                    if actor:
+                        cursor.execute('INSERT OR IGNORE INTO actors (login) VALUES (?)', (actor,))
+                        cursor.execute('SELECT id FROM actors WHERE login = ?', (actor,))
+                        result = cursor.fetchone()
+                        if result:
+                            actor_id = result[0]
+
+                    cursor.execute('''
+                        INSERT INTO runs
+                        (id, workflow_id, run_number, commit_sha, branch_id, event_id, status, conclusion,
+                         started_at, completed_at, duration_seconds, actor_id, url)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ON CONFLICT(id) DO UPDATE SET
+                            workflow_id = excluded.workflow_id,
+                            run_number = excluded.run_number,
+                            commit_sha = excluded.commit_sha,
+                            branch_id = excluded.branch_id,
+                            event_id = excluded.event_id,
+                            status = excluded.status,
+                            conclusion = excluded.conclusion,
+                            started_at = excluded.started_at,
+                            completed_at = excluded.completed_at,
+                            duration_seconds = excluded.duration_seconds,
+                            actor_id = excluded.actor_id,
+                            url = excluded.url,
+                            updated_at = CURRENT_TIMESTAMP
+                    ''', (run_id, workflow_id, run_number, commit_sha, branch_id, event_id, status, conclusion,
+                          started_at, completed_at, duration_seconds, actor_id, url))
                 return True
         except sqlite3.OperationalError as e:
             if "database is locked" in str(e):
