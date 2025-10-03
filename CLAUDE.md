@@ -22,7 +22,7 @@ AI開発ガイド: CIPetteプロジェクトでの作業指針
 - **Python 3.11+** + Flask
 - **SQLite** データベース
 - **uv** パッケージ管理
-- **PyGithub** GitHub API
+- **PyGithub** GitHub REST API
 
 ## ファイル構成
 
@@ -56,8 +56,8 @@ cipette/
 - `retry.py`でリトライロジック実装
 
 #### GitHub API統合
+- REST APIを使用してGitHub Actionsデータを取得
 - レート制限は自動的にリトライロジックで処理
-- ETagキャッシュで効率的なデータ取得
 - エラーハンドリングとログ出力
 
 #### パフォーマンス

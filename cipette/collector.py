@@ -6,7 +6,6 @@ from cipette.data_processor import DataProcessor
 from cipette.database import initialize_database
 from cipette.error_handling import (
     ConfigurationError,
-    DataProcessingError,
     GitHubAPIError,
 )
 from cipette.etag_manager import ETagManager
@@ -63,51 +62,7 @@ class GitHubDataCollector:
             return None
         return dt.strftime('%Y-%m-%d %H:%M:%S')
 
-    def make_graphql_request(
-        self, query: str, variables: dict[str, object], etag: str | None = None
-    ) -> tuple[dict[str, object], str]:
-        """Make a GraphQL request to GitHub API with optional ETag."""
-        return self.github_client.make_graphql_request(query, variables, etag)
 
-    @retry_api_call(max_retries=3)
-    def collect_repository_data_graphql(
-        self, repo_name: str, etag: str | None = None
-    ) -> tuple[int, int, str | None]:
-        """Collect repository data using GraphQL API.
-
-        Args:
-            repo_name: Repository name in format 'owner/repo'
-            etag: Optional ETag for conditional request
-
-        Returns:
-            Tuple of (workflow_count, total_runs, new_etag)
-
-        Raises:
-            GitHubAPIError: If API request fails
-            DataProcessingError: If data processing fails
-        """
-        try:
-            logger.info(f'Fetching data for {repo_name} using GraphQL...')
-            data, new_etag = self.github_client.get_workflows_graphql(repo_name, etag)
-
-            if data is None:
-                if new_etag:
-                    logger.info(f'No new data for {repo_name} (using cached ETag)')
-                    return 0, 0, new_etag
-                else:
-                    logger.error(f'Failed to fetch data for {repo_name}')
-                    return 0, 0, None
-
-            # Process the data using DataProcessor
-            workflow_count, total_runs = (
-                self.data_processor.process_workflows_from_graphql(data, repo_name)
-            )
-
-            return workflow_count, total_runs, new_etag
-
-        except Exception as e:
-            logger.error(f'Error collecting data for {repo_name}: {e}', exc_info=True)
-            raise
 
     def save_last_run_info(self, repo_data: dict[str, object]) -> None:
         """Save last run information to file.
@@ -228,14 +183,9 @@ class GitHubDataCollector:
         for repo in repos:
             start_time = datetime.now(UTC).isoformat()
             try:
-                # Get ETag for this repo
-                etag = self.get_etag_for_repo(repo)
-
-                # Collect data using GraphQL API
+                # Collect data using REST API
                 logger.info(f'Starting data collection for {repo}...')
-                wf_count, run_count, new_etag = self.collect_repository_data_graphql(
-                    repo, etag
-                )
+                wf_count, run_count = self.collect_repository_data(repo, since=None)
                 logger.info(
                     f'Completed data collection for {repo}: {wf_count} workflows, {run_count} runs'
                 )
@@ -245,7 +195,6 @@ class GitHubDataCollector:
                 # Record timestamp for this repo
                 repo_timestamps[repo] = {
                     'last_collected': start_time,
-                    'workflows_etag': new_etag,
                 }
 
                 # Check rate limit after each repository
@@ -261,31 +210,12 @@ class GitHubDataCollector:
                     logger.warning(f'Rate limit check failed for {repo}: {e}')
                     # Continue with next repository even if rate limit check fails
 
-            except GitHubAPIError as e:
-                logger.error(f'GitHub API error for {repo}: {e}', exc_info=True)
-                logger.info(f'Skipping {repo}, continuing with next repository...')
-                repo_timestamps[repo] = {
-                    'last_collected': start_time,
-                    'workflows_etag': None,
-                    'error': f'API Error: {str(e)}',
-                }
-                continue
-            except DataProcessingError as e:
-                logger.error(f'Data processing error for {repo}: {e}', exc_info=True)
-                logger.info(f'Skipping {repo}, continuing with next repository...')
-                repo_timestamps[repo] = {
-                    'last_collected': start_time,
-                    'workflows_etag': None,
-                    'error': f'Processing Error: {str(e)}',
-                }
-                continue
             except Exception as e:
-                logger.error(f'Unexpected error for {repo}: {e}', exc_info=True)
+                logger.error(f'Error for {repo}: {e}', exc_info=True)
                 logger.info(f'Skipping {repo}, continuing with next repository...')
                 repo_timestamps[repo] = {
                     'last_collected': start_time,
-                    'workflows_etag': None,
-                    'error': f'Unexpected Error: {str(e)}',
+                    'error': str(e),
                 }
                 continue
 

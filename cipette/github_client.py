@@ -11,7 +11,6 @@ from github import (
 )
 
 from cipette.config import Config
-from cipette.retry import retry_api_call
 
 logger = logging.getLogger(__name__)
 
@@ -87,52 +86,6 @@ class GitHubClient:
 
         logger.info('Rate limit reset! Continuing data collection...')
 
-    @retry_api_call(max_retries=3)
-    def make_graphql_request(
-        self, query: str, variables: dict, etag: str = None
-    ) -> tuple[dict, str]:
-        """Make a GraphQL request with conditional ETag support.
-
-        Args:
-            query: GraphQL query string
-            variables: Query variables
-            etag: Optional ETag for conditional request
-
-        Returns:
-            Tuple of (response_data, new_etag)
-        """
-        headers = self.session.headers.copy()
-        if etag:
-            headers['If-None-Match'] = etag
-
-        payload = {'query': query, 'variables': variables}
-
-        try:
-            response = self.session.post(
-                Config.GITHUB_GRAPHQL_ENDPOINT,
-                json=payload,
-                headers=headers,
-                timeout=Config.GITHUB_API_TIMEOUT,
-            )
-
-            if response.status_code == 304:
-                logger.info('Data unchanged (304 Not Modified)')
-                return None, etag
-
-            response.raise_for_status()
-
-            data = response.json()
-            new_etag = response.headers.get('ETag', '').strip('"')
-
-            if 'errors' in data:
-                logger.error(f'GraphQL errors: {data["errors"]}')
-                return None, None
-
-            return data, new_etag
-
-        except requests.RequestException as e:
-            logger.error(f'GraphQL request error: {e}')
-            return None, None
 
     def get_repository(self, repo_name: str) -> object:
         """Get repository object.
@@ -145,25 +98,3 @@ class GitHubClient:
         """
         return self.github.get_repo(repo_name)
 
-    def get_workflows_graphql(
-        self, repo_name: str, etag: str = None
-    ) -> tuple[dict, str]:
-        """Get workflows using GraphQL API.
-
-        Args:
-            repo_name: Repository name in format 'owner/repo'
-            etag: Optional ETag for conditional request
-
-        Returns:
-            Tuple of (workflows_data, new_etag)
-        """
-        owner, repo = repo_name.split('/')
-
-        variables = {
-            'owner': owner,
-            'repo': repo,
-            'first': 50,  # Maximum workflows to fetch
-        }
-
-        logger.info(f'Fetching data for {repo_name} using GraphQL...')
-        return self.make_graphql_request(Config.WORKFLOWS_QUERY, variables, etag)

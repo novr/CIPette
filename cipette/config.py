@@ -23,7 +23,6 @@ class Config:
     # GitHub API configuration
     GITHUB_TOKEN = os.getenv('GITHUB_TOKEN')
     GITHUB_API_BASE_URL = 'https://api.github.com'
-    GITHUB_GRAPHQL_ENDPOINT = 'https://api.github.com/graphql'
     GITHUB_API_TIMEOUT = 30
     GITHUB_RATE_LIMIT_WARNING_THRESHOLD = 100
     GITHUB_RATE_LIMIT_STOP_THRESHOLD = 10
@@ -67,41 +66,6 @@ class Config:
     # Cache configuration
     CACHE_FILE = 'data/last_run.json'
 
-    # GraphQL queries
-    WORKFLOWS_QUERY = """
-        query GetRepositoryWorkflows($owner: String!, $repo: String!, $first: Int!) {
-          repository(owner: $owner, name: $repo) {
-            name
-            workflows(first: $first) {
-              nodes {
-                id
-                name
-                path
-                state
-                createdAt
-                updatedAt
-                runs(first: 100) {
-                  nodes {
-                    id
-                    runNumber
-                    headSha
-                    headBranch
-                    event
-                    status
-                    conclusion
-                    runStartedAt
-                    updatedAt
-                    actor {
-                      login
-                    }
-                    url
-                  }
-                }
-              }
-            }
-          }
-        }
-    """
 
     # Time formatting constants
     TIME_UNITS = [

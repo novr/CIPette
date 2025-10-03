@@ -169,12 +169,12 @@ def test_collect_all_data_with_last_run(collector, tmp_path):
         patch('cipette.config.Config.TARGET_REPOSITORIES', ['owner/repo']),
         patch('cipette.collector.initialize_database'),
         patch.object(
-            collector, 'collect_repository_data_graphql', return_value=(1, 1, 'etag123')
+            collector, 'collect_repository_data', return_value=(1, 1)
         ) as mock_collect,
     ):
         collector.collect_all_data()
 
-        # Verify collect_repository_data_graphql was called
+        # Verify collect_repository_data was called
         mock_collect.assert_called_once()
         call_args = mock_collect.call_args
         # Check that it was called with the repository name

@@ -20,58 +20,6 @@ class DataProcessor:
         """
         self.max_workflow_runs = max_workflow_runs
 
-    def process_workflows_from_graphql(
-        self, workflows_data: dict[str, Any], repository: str
-    ) -> tuple[int, int]:
-        """Process workflows data from GraphQL response.
-
-        Args:
-            workflows_data: GraphQL response data
-            repository: Repository name
-
-        Returns:
-            Tuple of (workflow_count, total_runs)
-        """
-        if not workflows_data or 'data' not in workflows_data:
-            return 0, 0
-
-        repository_data = workflows_data['data'].get('repository', {})
-        workflows = repository_data.get('workflows', {}).get('nodes', [])
-
-        workflow_count = len(workflows)
-        total_runs = 0
-
-        logger.info(f'Processing {workflow_count} workflows from GraphQL')
-
-        for workflow in workflows:
-            workflow_id = int(workflow['id'])
-            workflow_name = workflow['name']
-            workflow_path = workflow.get('path')
-            workflow_state = workflow.get('state')
-
-            # Insert workflow
-            insert_workflow(
-                workflow_id=workflow_id,
-                repository=repository,
-                name=workflow_name,
-                path=workflow_path,
-                state=workflow_state,
-            )
-
-            # Process runs
-            runs = workflow.get('runs', {}).get('nodes', [])
-            runs_to_process = runs[: self.max_workflow_runs]
-
-            if runs_to_process:
-                runs_data = self._process_runs_data(runs_to_process, workflow_id)
-                if runs_data:
-                    insert_runs_batch(runs_data)
-                    total_runs += len(runs_data)
-                    logger.info(
-                        f'Saved {len(runs_data)} runs to database for workflow {workflow_id}'
-                    )
-
-        return workflow_count, total_runs
 
     def process_workflows_from_rest(
         self, workflows, repository: str
