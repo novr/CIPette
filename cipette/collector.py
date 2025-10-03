@@ -1,10 +1,9 @@
 import logging
-import sqlite3
 from datetime import UTC, datetime
 
 from cipette.config import Config
 from cipette.data_processor import DataProcessor
-from cipette.database import get_connection, initialize_database
+from cipette.database import initialize_database
 from cipette.etag_manager import ETagManager
 from cipette.github_client import GitHubClient
 from cipette.logging_config import setup_logging
@@ -55,7 +54,7 @@ class GitHubDataCollector:
         """Collect repository data using GraphQL API."""
         logger.info(f"Fetching data for {repo_name} using GraphQL...")
         data, new_etag = self.github_client.get_workflows_graphql(repo_name, etag)
-        
+
         if data is None:
             if new_etag:
                 logger.info(f"No new data for {repo_name} (using cached ETag)")
@@ -63,10 +62,10 @@ class GitHubDataCollector:
             else:
                 logger.error(f"Failed to fetch data for {repo_name}")
                 return 0, 0, None
-        
+
         # Process the data using DataProcessor
         workflow_count, total_runs = self.data_processor.process_workflows_from_graphql(data, repo_name)
-        
+
         return workflow_count, total_runs, new_etag
 
     def save_last_run_info(self, repo_data):
@@ -155,7 +154,7 @@ class GitHubDataCollector:
         remaining_calls = self.check_rate_limit()
         if remaining_calls < 50:
             logger.warning("Low API rate limit remaining. Consider running later.")
-        
+
         # Wait for rate limit reset if needed
         self.wait_for_rate_limit_reset()
 
@@ -166,7 +165,7 @@ class GitHubDataCollector:
         for repo in repos:
             try:
                 # Get ETag for this repo
-                etag = self.get_etag_for_repo(repo)
+                # etag = self.get_etag_for_repo(repo)  # TODO: Implement ETag support
 
                 # Collect data using REST API (fallback for now)
                 start_time = datetime.now(UTC).isoformat()
@@ -181,13 +180,13 @@ class GitHubDataCollector:
                     'last_collected': start_time,
                     'workflows_etag': None
                 }
-                
+
                 # Check rate limit after each repository
                 remaining_calls = self.check_rate_limit()
                 if remaining_calls < 10:
                     logger.warning("Very low API rate limit. Stopping collection.")
                     break
-                
+
                 # Wait for rate limit reset if needed before next repository
                 self.wait_for_rate_limit_reset()
 

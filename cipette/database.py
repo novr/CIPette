@@ -1,10 +1,10 @@
 import logging
 import sqlite3
 import time
+from collections.abc import Generator
 from contextlib import contextmanager
 from datetime import datetime
 from functools import lru_cache
-from typing import Generator
 
 from cipette.config import Config
 from cipette.retry import retry_database_operation
@@ -14,10 +14,10 @@ logger = logging.getLogger(__name__)
 
 class DatabaseConnection:
     """Database connection wrapper with proper context manager support."""
-    
+
     def __init__(self, path: str, timeout: float = None):
         """Initialize database connection.
-        
+
         Args:
             path: Database file path
             timeout: Connection timeout in seconds
@@ -25,21 +25,21 @@ class DatabaseConnection:
         self.path = path
         self.timeout = timeout or Config.DATABASE_DEFAULT_TIMEOUT
         self.conn = None
-    
+
     def __enter__(self) -> sqlite3.Connection:
         """Enter context manager and return connection."""
         self.conn = sqlite3.connect(self.path, timeout=self.timeout)
         self.conn.row_factory = sqlite3.Row  # Enable column access by name
-        
+
         # Configure SQLite for better performance and concurrency
         self.conn.execute(f"PRAGMA journal_mode={Config.SQLITE_JOURNAL_MODE}")
         self.conn.execute(f"PRAGMA synchronous={Config.SQLITE_SYNCHRONOUS}")
         self.conn.execute(f"PRAGMA busy_timeout={Config.DATABASE_BUSY_TIMEOUT}")
         self.conn.execute(f"PRAGMA temp_store={Config.SQLITE_TEMP_STORE}")
         self.conn.execute(f"PRAGMA cache_size={Config.DATABASE_CACHE_SIZE}")
-        
+
         return self.conn
-    
+
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Exit context manager and handle connection cleanup."""
         if self.conn:
@@ -50,13 +50,13 @@ class DatabaseConnection:
             else:
                 # No exception, commit transaction
                 self.conn.commit()
-            
+
             self.conn.close()
             self.conn = None
 
 
 @contextmanager
-def get_connection() -> Generator[sqlite3.Connection, None, None]:
+def get_connection() -> Generator[sqlite3.Connection]:
     """Create and return a database connection with proper context manager support.
 
     Yields:
@@ -267,8 +267,8 @@ def initialize_database():
         ON mttr_cache (calculated_at)
     ''')
 
-        conn.commit()
-        logger.info("Database initialized successfully.")
+    conn.commit()
+    logger.info("Database initialized successfully.")
 
 
 @retry_database_operation(max_retries=3)
@@ -291,11 +291,11 @@ def insert_workflow(workflow_id, repository, name, path=None, state=None, conn=N
             cursor.execute('''
                 INSERT OR IGNORE INTO repositories (name) VALUES (?)
             ''', (repository,))
-            
+
             # Get repository ID
             cursor.execute('SELECT id FROM repositories WHERE name = ?', (repository,))
             repo_id = cursor.fetchone()[0]
-            
+
             cursor.execute('''
                 INSERT INTO workflows (id, repository_id, name, path, state)
                 VALUES (?, ?, ?, ?, ?)
@@ -321,11 +321,11 @@ def insert_workflow(workflow_id, repository, name, path=None, state=None, conn=N
                 cursor.execute('''
                     INSERT OR IGNORE INTO repositories (name) VALUES (?)
                 ''', (repository,))
-                
+
                 # Get repository ID
                 cursor.execute('SELECT id FROM repositories WHERE name = ?', (repository,))
                 repo_id = cursor.fetchone()[0]
-                
+
                 cursor.execute('''
                     INSERT INTO workflows (id, repository_id, name, path, state)
                     VALUES (?, ?, ?, ?, ?)
@@ -422,7 +422,7 @@ def insert_runs_batch(runs_data, conn=None):
             for run_data in runs_data:
                 (run_id, workflow_id, run_number, commit_sha, branch, event, status, conclusion,
                  started_at, completed_at, duration_seconds, actor, url) = run_data
-                
+
                 # Insert normalized entities
                 branch_id = None
                 if branch:
@@ -484,7 +484,7 @@ def insert_runs_batch(runs_data, conn=None):
                 for run_data in runs_data:
                     (run_id, workflow_id, run_number, commit_sha, branch, event, status, conclusion,
                      started_at, completed_at, duration_seconds, actor, url) = run_data
-                    
+
                     # Insert normalized entities
                     branch_id = None
                     if branch:
