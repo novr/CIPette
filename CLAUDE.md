@@ -57,12 +57,29 @@ cipette/
 - **Focused**: Only essential CI/CD metrics
 - **Local**: No cloud dependencies
 
+## Development Guidelines
+
+### Code Quality
+- **Always run linter before commit**: `uv run ruff check cipette/ tests/ --fix`
+- Use `--unsafe-fixes` if needed: `uv run ruff check cipette/ tests/ --fix --unsafe-fixes`
+- Ensure all checks pass: `uv run ruff check cipette/ tests/`
+- Follow PEP 8 style guidelines
+- Use type hints consistently
+
+### Commit Process
+1. Make code changes
+2. Run linter: `uv run ruff check cipette/ tests/ --fix`
+3. Fix any remaining issues manually
+4. Verify all checks pass: `uv run ruff check cipette/ tests/`
+5. Commit with descriptive message
+
 ## Success Criteria
 
 - [x] Collects GitHub Actions data
 - [x] Shows metrics in web interface
 - [x] Filters work
 - [x] Fast performance
+- [x] Code quality maintained with linting
 - [ ] Useful insights from real data
 
 **Philosophy**: Ship working software fast, optimize later.
