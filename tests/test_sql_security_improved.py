@@ -2,13 +2,13 @@
 
 import sqlite3
 from datetime import datetime
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 import pytest
 
 from cipette.sql_security import (
-    SafeSQLExecutor,
     SafePragmaSet,
+    SafeSQLExecutor,
     SQLInjectionError,
     ValidateQueryParams,
 )
@@ -21,12 +21,12 @@ class TestSafeSQLExecutorComprehensive:
         """Test edge cases for PRAGMA value validation."""
         # Test unknown PRAGMA names
         assert not SafeSQLExecutor.validate_pragma_value('unknown_pragma', 'value')
-        
+
         # Test boundary values
         assert SafeSQLExecutor.validate_pragma_value('busy_timeout', 0)
         assert SafeSQLExecutor.validate_pragma_value('busy_timeout', -1)
         assert SafeSQLExecutor.validate_pragma_value('cache_size', 0)
-        
+
         # Test case sensitivity
         assert SafeSQLExecutor.validate_pragma_value('journal_mode', 'wal')  # lowercase
         assert SafeSQLExecutor.validate_pragma_value('journal_mode', 'WAL')  # uppercase
@@ -36,22 +36,22 @@ class TestSafeSQLExecutorComprehensive:
         # Create a real in-memory database
         conn = sqlite3.connect(':memory:')
         cursor = conn.cursor()
-        
+
         # Test with invalid SQL
         with pytest.raises(SQLInjectionError):
             SafeSQLExecutor.safe_execute(cursor, 'INVALID SQL SYNTAX')
-        
+
         conn.close()
 
     def test_safe_execute_with_sqlite_operational_error(self):
         """Test safe_execute with SQLite operational errors."""
         conn = sqlite3.connect(':memory:')
         cursor = conn.cursor()
-        
+
         # Test with table that doesn't exist
         with pytest.raises(SQLInjectionError):
             SafeSQLExecutor.safe_execute(cursor, 'SELECT * FROM non_existent_table')
-        
+
         conn.close()
 
     def test_safe_executemany_with_empty_params(self):
@@ -64,11 +64,11 @@ class TestSafeSQLExecutorComprehensive:
         """Test safe_pragma_execute with SQLite errors."""
         conn = sqlite3.connect(':memory:')
         cursor = conn.cursor()
-        
+
         # Test with invalid PRAGMA value
         with pytest.raises(SQLInjectionError):
             SafeSQLExecutor.safe_pragma_execute(cursor, 'journal_mode', 'INVALID_VALUE')
-        
+
         conn.close()
 
 
@@ -88,7 +88,7 @@ class TestValidateQueryParamsComprehensive:
             "string_with_numbers123",
             datetime.now(),
         ]
-        
+
         for param in safe_params:
             assert ValidateQueryParams._is_safe_parameter(param), f"False negative for safe parameter: {param}"
 
@@ -104,7 +104,7 @@ class TestValidateQueryParamsComprehensive:
             "value; ALTER TABLE workflows ADD COLUMN malicious",
             "value; CREATE TABLE malicious_table",
         ]
-        
+
         for param in dangerous_strings:
             assert not ValidateQueryParams._is_safe_parameter(param), f"False negative for dangerous parameter: {param}"
 
@@ -112,13 +112,13 @@ class TestValidateQueryParamsComprehensive:
         """Test _is_safe_parameter with edge cases."""
         # Test empty string
         assert ValidateQueryParams._is_safe_parameter("")
-        
+
         # Test string with only spaces
         assert ValidateQueryParams._is_safe_parameter("   ")
-        
+
         # Test string with newlines
         assert ValidateQueryParams._is_safe_parameter("value\nwith\nnewlines")
-        
+
         # Test string with tabs
         assert ValidateQueryParams._is_safe_parameter("value\twith\ttabs")
 
@@ -134,7 +134,7 @@ class TestValidateQueryParamsComprehensive:
             'timestamps': [datetime.now(), datetime.now()],
             'config': None
         }
-        
+
         # This should fail because we don't handle nested dicts
         assert not ValidateQueryParams.validate_query_params(complex_params)
 
@@ -148,7 +148,7 @@ class TestValidateQueryParamsComprehensive:
             True,
             "dangerous; DROP TABLE users",
         ]
-        
+
         assert not ValidateQueryParams.validate_query_params(mixed_params)
 
     def test_validate_query_params_empty_structures(self):
@@ -159,7 +159,7 @@ class TestValidateQueryParamsComprehensive:
             {},
             None,
         ]
-        
+
         for structure in empty_structures:
             assert ValidateQueryParams.validate_query_params(structure), f"Failed for empty structure: {structure}"
 
@@ -187,18 +187,18 @@ class TestIntegrationScenarios:
         """Test with real SQLite database operations."""
         conn = sqlite3.connect(':memory:')
         cursor = conn.cursor()
-        
+
         # Create a test table
         cursor.execute('CREATE TABLE test_workflows (id INTEGER PRIMARY KEY, name TEXT)')
-        
+
         # Test safe operations
         SafeSQLExecutor.safe_execute(cursor, 'INSERT INTO test_workflows (name) VALUES (?)', ('test_workflow',))
         SafeSQLExecutor.safe_execute(cursor, 'SELECT * FROM test_workflows WHERE id = ?', (1,))
-        
+
         # Test dangerous operations
         with pytest.raises(SQLInjectionError):
             SafeSQLExecutor.safe_execute(cursor, 'SELECT * FROM test_workflows; DROP TABLE test_workflows')
-        
+
         conn.close()
 
     def test_parameter_validation_in_real_scenario(self):
@@ -211,9 +211,9 @@ class TestIntegrationScenarios:
             '.github/workflows/test.yml',  # path
             'active',  # state
         )
-        
+
         assert ValidateQueryParams.validate_query_params(workflow_data)
-        
+
         # Test with malicious data
         malicious_data = (
             12345,
@@ -222,23 +222,23 @@ class TestIntegrationScenarios:
             '.github/workflows/test.yml',
             'active',
         )
-        
+
         assert not ValidateQueryParams.validate_query_params(malicious_data)
 
     def test_pragma_operations_in_real_scenario(self):
         """Test PRAGMA operations in a real scenario."""
         conn = sqlite3.connect(':memory:')
         cursor = conn.cursor()
-        
+
         # Test valid PRAGMA operations
         SafePragmaSet.safe_pragma_set(cursor, 'journal_mode', 'WAL')
         SafePragmaSet.safe_pragma_set(cursor, 'synchronous', 'NORMAL')
         SafePragmaSet.safe_pragma_set(cursor, 'busy_timeout', 5000)
-        
+
         # Test invalid PRAGMA operations
         with pytest.raises(SQLInjectionError):
             SafePragmaSet.safe_pragma_set(cursor, 'journal_mode', 'INVALID')
-        
+
         conn.close()
 
 
@@ -249,7 +249,7 @@ class TestPerformanceAndEdgeCases:
         """Test parameter validation with large datasets."""
         large_params = list(range(1000))  # 1000 integers
         assert ValidateQueryParams.validate_query_params(large_params)
-        
+
         # Test with one dangerous parameter in large set
         large_params_with_danger = list(range(999)) + ['safe; DROP TABLE users']
         assert not ValidateQueryParams.validate_query_params(large_params_with_danger)
@@ -262,7 +262,7 @@ class TestPerformanceAndEdgeCases:
             'café',
             'naïve',
         ]
-        
+
         for param in unicode_params:
             assert ValidateQueryParams._is_safe_parameter(param), f"Failed for Unicode parameter: {param}"
 
@@ -272,6 +272,6 @@ class TestPerformanceAndEdgeCases:
             '正常な文字列; DROP TABLE users',
             '🚀 rocket; DELETE FROM workflows',
         ]
-        
+
         for param in unicode_dangerous:
             assert not ValidateQueryParams._is_safe_parameter(param), f"Failed to detect Unicode SQL injection: {param}"
