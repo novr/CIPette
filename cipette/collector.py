@@ -4,6 +4,11 @@ from datetime import UTC, datetime
 from cipette.config import Config
 from cipette.data_processor import DataProcessor
 from cipette.database import initialize_database
+from cipette.error_handling import (
+    ConfigurationError,
+    DataProcessingError,
+    GitHubAPIError,
+)
 from cipette.etag_manager import ETagManager
 from cipette.github_client import GitHubClient
 from cipette.logging_config import setup_logging
@@ -69,14 +74,14 @@ class GitHubDataCollector:
         self, repo_name: str, etag: str | None = None
     ) -> tuple[int, int, str | None]:
         """Collect repository data using GraphQL API.
-        
+
         Args:
             repo_name: Repository name in format 'owner/repo'
             etag: Optional ETag for conditional request
-            
+
         Returns:
             Tuple of (workflow_count, total_runs, new_etag)
-            
+
         Raises:
             GitHubAPIError: If API request fails
             DataProcessingError: If data processing fails
@@ -94,12 +99,12 @@ class GitHubDataCollector:
                     return 0, 0, None
 
             # Process the data using DataProcessor
-            workflow_count, total_runs = self.data_processor.process_workflows_from_graphql(
-                data, repo_name
+            workflow_count, total_runs = (
+                self.data_processor.process_workflows_from_graphql(data, repo_name)
             )
 
             return workflow_count, total_runs, new_etag
-            
+
         except Exception as e:
             logger.error(f'Error collecting data for {repo_name}: {e}', exc_info=True)
             raise
@@ -152,16 +157,23 @@ class GitHubDataCollector:
         return workflow_count, total_runs
 
     def collect_all_data(self) -> None:
-        """Collect data for all configured repositories."""
+        """Collect data for all configured repositories.
+
+        Raises:
+            ConfigurationError: If required configuration is missing
+            GitHubAPIError: If GitHub API access fails
+        """
         if not Config.GITHUB_TOKEN:
-            logger.error('GITHUB_TOKEN not found in environment variables')
-            return
+            error_msg = 'GITHUB_TOKEN not found in environment variables'
+            logger.error(error_msg)
+            raise ConfigurationError(error_msg)
 
         if not Config.TARGET_REPOSITORIES:
-            logger.error('TARGET_REPOSITORIES not configured')
+            error_msg = 'TARGET_REPOSITORIES not configured'
+            logger.error(error_msg)
             logger.error('Please set TARGET_REPOSITORIES in .env file')
             logger.error('Example: TARGET_REPOSITORIES=owner/repo1,owner/repo2')
-            return
+            raise ConfigurationError(error_msg)
 
         # Show last run info
         last_run = self.get_last_run_info()
@@ -178,39 +190,52 @@ class GitHubDataCollector:
                 logger.info(f'  Repositories: {", ".join(repos_info)}')
             logger.info('=' * Config.LOG_SEPARATOR_LENGTH)
 
-        # Initialize database
-        initialize_database()
+        try:
+            # Initialize database
+            initialize_database()
+        except Exception as e:
+            error_msg = f'Failed to initialize database: {e}'
+            logger.error(error_msg, exc_info=True)
+            raise ConfigurationError(error_msg) from e
 
         # Parse repository list
         repos = [r.strip() for r in Config.TARGET_REPOSITORIES if r.strip()]
 
         if not repos:
-            logger.error('No repositories configured')
-            return
+            error_msg = 'No repositories configured'
+            logger.error(error_msg)
+            raise ConfigurationError(error_msg)
 
         logger.info(f'Starting data collection for {len(repos)} repository(ies)...')
 
-        # Check rate limit before starting
-        remaining_calls = self.check_rate_limit()
-        if remaining_calls < 50:
-            logger.warning('Low API rate limit remaining. Consider running later.')
+        try:
+            # Check rate limit before starting
+            remaining_calls = self.check_rate_limit()
+            if remaining_calls < 50:
+                logger.warning('Low API rate limit remaining. Consider running later.')
 
-        # Wait for rate limit reset if needed
-        self.wait_for_rate_limit_reset()
+            # Wait for rate limit reset if needed
+            self.wait_for_rate_limit_reset()
+        except Exception as e:
+            error_msg = f'Failed to check GitHub API rate limit: {e}'
+            logger.error(error_msg, exc_info=True)
+            raise GitHubAPIError(error_msg) from e
 
         total_workflows = 0
         total_runs = 0
         repo_timestamps = {}
 
         for repo in repos:
+            start_time = datetime.now(UTC).isoformat()
             try:
                 # Get ETag for this repo
                 etag = self.get_etag_for_repo(repo)
 
                 # Collect data using GraphQL API
-                start_time = datetime.now(UTC).isoformat()
                 logger.info(f'Starting data collection for {repo}...')
-                wf_count, run_count, new_etag = self.collect_repository_data_graphql(repo, etag)
+                wf_count, run_count, new_etag = self.collect_repository_data_graphql(
+                    repo, etag
+                )
                 logger.info(
                     f'Completed data collection for {repo}: {wf_count} workflows, {run_count} runs'
                 )
@@ -224,24 +249,45 @@ class GitHubDataCollector:
                 }
 
                 # Check rate limit after each repository
-                remaining_calls = self.check_rate_limit()
-                if remaining_calls < 10:
-                    logger.warning('Very low API rate limit. Stopping collection.')
-                    break
+                try:
+                    remaining_calls = self.check_rate_limit()
+                    if remaining_calls < 10:
+                        logger.warning('Very low API rate limit. Stopping collection.')
+                        break
 
-                # Wait for rate limit reset if needed before next repository
-                self.wait_for_rate_limit_reset()
+                    # Wait for rate limit reset if needed before next repository
+                    self.wait_for_rate_limit_reset()
+                except Exception as e:
+                    logger.warning(f'Rate limit check failed for {repo}: {e}')
+                    # Continue with next repository even if rate limit check fails
 
-            except Exception as e:
-                logger.error(f'Unexpected error for {repo}: {e}', exc_info=True)
+            except GitHubAPIError as e:
+                logger.error(f'GitHub API error for {repo}: {e}', exc_info=True)
                 logger.info(f'Skipping {repo}, continuing with next repository...')
-                # Record failed collection attempt
                 repo_timestamps[repo] = {
                     'last_collected': start_time,
                     'workflows_etag': None,
-                    'error': str(e)
+                    'error': f'API Error: {str(e)}',
                 }
-                continue  # Try next repository
+                continue
+            except DataProcessingError as e:
+                logger.error(f'Data processing error for {repo}: {e}', exc_info=True)
+                logger.info(f'Skipping {repo}, continuing with next repository...')
+                repo_timestamps[repo] = {
+                    'last_collected': start_time,
+                    'workflows_etag': None,
+                    'error': f'Processing Error: {str(e)}',
+                }
+                continue
+            except Exception as e:
+                logger.error(f'Unexpected error for {repo}: {e}', exc_info=True)
+                logger.info(f'Skipping {repo}, continuing with next repository...')
+                repo_timestamps[repo] = {
+                    'last_collected': start_time,
+                    'workflows_etag': None,
+                    'error': f'Unexpected Error: {str(e)}',
+                }
+                continue
 
         logger.info('Data collection completed!')
         logger.info(f'Total workflows collected: {total_workflows}')
@@ -253,8 +299,20 @@ class GitHubDataCollector:
 
 def main() -> None:
     """Main entry point for the data collector."""
-    collector = GitHubDataCollector()
-    collector.collect_all_data()
+    try:
+        collector = GitHubDataCollector()
+        collector.collect_all_data()
+    except ConfigurationError as e:
+        logger.error(f'Configuration error: {e}')
+        logger.error('Please check your .env file and configuration settings.')
+        raise
+    except GitHubAPIError as e:
+        logger.error(f'GitHub API error: {e}')
+        logger.error('Please check your GitHub token and network connection.')
+        raise
+    except Exception as e:
+        logger.error(f'Unexpected error during data collection: {e}', exc_info=True)
+        raise
 
 
 if __name__ == '__main__':

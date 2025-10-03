@@ -16,6 +16,7 @@ from cipette.database import (
     get_metrics_by_repository,
     refresh_mttr_cache,
 )
+from cipette.error_handling import ConfigurationError, DatabaseError
 from cipette.logging_config import setup_logging
 
 # Initialize logging
@@ -117,7 +118,7 @@ def get_available_repositories() -> list[str]:
         List of repository names
 
     Raises:
-        sqlite3.OperationalError: If database not found or corrupted
+        DatabaseError: If database operation fails
     """
     try:
         with get_connection() as conn:
@@ -126,11 +127,14 @@ def get_available_repositories() -> list[str]:
             rows = cursor.fetchall()
             return [row['name'] for row in rows]
     except sqlite3.OperationalError as e:
+        logger.error(f'Database operational error: {e}')
+        raise DatabaseError(f'Database operation failed: {e}') from e
+    except sqlite3.DatabaseError as e:
         logger.error(f'Database error: {e}')
-        raise
+        raise DatabaseError(f'Database error: {e}') from e
     except Exception as e:
-        logger.error(f'Unexpected error fetching repositories: {e}')
-        raise
+        logger.error(f'Unexpected error fetching repositories: {e}', exc_info=True)
+        raise DatabaseError(f'Unexpected database error: {e}') from e
 
 
 # Routes
@@ -165,15 +169,22 @@ def dashboard() -> str:
             selected_repository=repository,
         )
 
-    except sqlite3.OperationalError:
-        logger.error('Database not found or not initialized')
+    except DatabaseError as e:
+        logger.error(f'Database error loading dashboard: {e}')
         return render_template(
             'error.html',
-            error_message="Database not found. Please run 'cipette-collect' first.",
+            error_message="Database error. Please run 'cipette-collect' first or check database configuration.",
+        ), 500
+
+    except ConfigurationError as e:
+        logger.error(f'Configuration error loading dashboard: {e}')
+        return render_template(
+            'error.html',
+            error_message='Configuration error. Please check your settings.',
         ), 500
 
     except Exception as e:
-        logger.error(f'Error loading dashboard: {e}', exc_info=True)
+        logger.error(f'Unexpected error loading dashboard: {e}', exc_info=True)
         return render_template(
             'error.html', error_message='Failed to load dashboard metrics'
         ), 500

@@ -5,6 +5,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 from cipette.collector import GitHubDataCollector
+from cipette.error_handling import ConfigurationError
 
 
 @pytest.fixture
@@ -132,8 +133,10 @@ def test_collect_repository_data_success(collector):
 
 def test_collect_all_data_no_token(collector):
     """Test behavior when GITHUB_TOKEN is not set."""
-    with patch('cipette.config.Config.GITHUB_TOKEN', None):
-        # Should return early without error
+    with (
+        patch('cipette.config.Config.GITHUB_TOKEN', None),
+        pytest.raises(ConfigurationError, match='GITHUB_TOKEN not found'),
+    ):
         collector.collect_all_data()
 
 
@@ -142,8 +145,8 @@ def test_collect_all_data_no_repositories(collector):
     with (
         patch('cipette.config.Config.TARGET_REPOSITORIES', []),
         patch('cipette.collector.initialize_database'),
+        pytest.raises(ConfigurationError, match='TARGET_REPOSITORIES not configured'),
     ):
-        # Should return early without error
         collector.collect_all_data()
 
 
@@ -166,12 +169,12 @@ def test_collect_all_data_with_last_run(collector, tmp_path):
         patch('cipette.config.Config.TARGET_REPOSITORIES', ['owner/repo']),
         patch('cipette.collector.initialize_database'),
         patch.object(
-            collector, 'collect_repository_data', return_value=(1, 1)
+            collector, 'collect_repository_data_graphql', return_value=(1, 1, 'etag123')
         ) as mock_collect,
     ):
         collector.collect_all_data()
 
-        # Verify collect_repository_data was called
+        # Verify collect_repository_data_graphql was called
         mock_collect.assert_called_once()
         call_args = mock_collect.call_args
         # Check that it was called with the repository name
