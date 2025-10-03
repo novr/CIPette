@@ -3,7 +3,7 @@
 import logging
 import re
 import sqlite3
-from typing import Any, Union
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -35,11 +35,11 @@ class SafeSQLExecutor:
     @classmethod
     def validate_pragma_value(cls, pragma_name: str, value: Any) -> bool:
         """Validate PRAGMA value to prevent injection.
-        
+
         Args:
             pragma_name: Name of the PRAGMA
             value: Value to validate
-            
+
         Returns:
             True if valid, False otherwise
         """
@@ -48,7 +48,7 @@ class SafeSQLExecutor:
             return False
 
         allowed_values = cls.ALLOWED_PRAGMA_VALUES[pragma_name]
-        
+
         if allowed_values is None:
             # Integer values
             try:
@@ -63,32 +63,32 @@ class SafeSQLExecutor:
     @classmethod
     def validate_identifier(cls, identifier: str, identifier_type: str = "identifier") -> bool:
         """Validate SQL identifier (table name, column name, etc.).
-        
+
         Args:
             identifier: Identifier to validate
             identifier_type: Type of identifier for error messages
-            
+
         Returns:
             True if valid, False otherwise
         """
         if not isinstance(identifier, str):
             return False
-            
+
         if not cls.TABLE_NAME_PATTERN.match(identifier):
             logger.warning(f"Invalid {identifier_type}: {identifier}")
             return False
-            
+
         return True
 
     @classmethod
     def safe_pragma_execute(cls, cursor: sqlite3.Cursor, pragma_name: str, value: Any) -> None:
         """Safely execute a PRAGMA statement.
-        
+
         Args:
             cursor: Database cursor
             pragma_name: Name of the PRAGMA
             value: Value to set
-            
+
         Raises:
             SQLInjectionError: If validation fails
         """
@@ -101,15 +101,15 @@ class SafeSQLExecutor:
     @classmethod
     def safe_identifier_query(cls, query_template: str, identifier: str, **params) -> str:
         """Safely construct a query with an identifier.
-        
+
         Args:
             query_template: Query template with {identifier} placeholder
             identifier: Identifier to insert
             **params: Additional parameters for the query
-            
+
         Returns:
             Safe query string
-            
+
         Raises:
             SQLInjectionError: If identifier is invalid
         """
@@ -121,10 +121,10 @@ class SafeSQLExecutor:
     @classmethod
     def validate_sql_string(cls, sql_string: str) -> bool:
         """Validate SQL string for potential injection patterns.
-        
+
         Args:
             sql_string: SQL string to validate
-            
+
         Returns:
             True if safe, False if potential injection detected
         """
@@ -173,12 +173,12 @@ class SafeSQLExecutor:
     @classmethod
     def safe_execute(cls, cursor: sqlite3.Cursor, query: str, params: tuple = None) -> None:
         """Safely execute a SQL query with parameter validation.
-        
+
         Args:
             cursor: Database cursor
             query: SQL query string
             params: Query parameters
-            
+
         Raises:
             SQLInjectionError: If query is unsafe
         """
@@ -193,12 +193,12 @@ class SafeSQLExecutor:
 
 def safe_pragma_set(cursor: sqlite3.Cursor, pragma_name: str, value: Any) -> None:
     """Safely set a PRAGMA value.
-    
+
     Args:
         cursor: Database cursor
         pragma_name: Name of the PRAGMA
         value: Value to set
-        
+
     Raises:
         SQLInjectionError: If validation fails
     """
@@ -207,27 +207,27 @@ def safe_pragma_set(cursor: sqlite3.Cursor, pragma_name: str, value: Any) -> Non
 
 def safe_identifier_query(query_template: str, identifier: str, **params) -> str:
     """Safely construct a query with an identifier.
-    
+
     Args:
         query_template: Query template with {identifier} placeholder
         identifier: Identifier to insert
         **params: Additional parameters for the query
-        
+
     Returns:
         Safe query string
-        
+
     Raises:
         SQLInjectionError: If identifier is invalid
     """
     return SafeSQLExecutor.safe_identifier_query(query_template, identifier, **params)
 
 
-def validate_query_params(params: Union[tuple, list, dict]) -> bool:
+def validate_query_params(params: tuple | list | dict) -> bool:
     """Validate query parameters for safety.
-    
+
     Args:
         params: Query parameters to validate
-        
+
     Returns:
         True if safe, False if potential injection detected
     """
@@ -236,16 +236,14 @@ def validate_query_params(params: Union[tuple, list, dict]) -> bool:
 
     if isinstance(params, (tuple, list)):
         for param in params:
-            if isinstance(param, str):
+            if isinstance(param, str) and not SafeSQLExecutor.validate_sql_string(param):
                 # Check for SQL injection patterns in string parameters
-                if not SafeSQLExecutor.validate_sql_string(param):
-                    return False
+                return False
     elif isinstance(params, dict):
         for key, value in params.items():
             if not SafeSQLExecutor.validate_identifier(key, "parameter name"):
                 return False
-            if isinstance(value, str):
-                if not SafeSQLExecutor.validate_sql_string(value):
-                    return False
+            if isinstance(value, str) and not SafeSQLExecutor.validate_sql_string(value):
+                return False
 
     return True

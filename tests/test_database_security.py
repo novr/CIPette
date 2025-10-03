@@ -1,11 +1,10 @@
 """Tests for database security measures."""
 
-import pytest
-import sqlite3
 from unittest.mock import Mock, patch
 
-from cipette.database import insert_workflow, insert_run, insert_runs_batch
-from cipette.sql_security import SQLInjectionError
+import pytest
+
+from cipette.database import insert_run, insert_runs_batch, insert_workflow
 
 
 class TestDatabaseSecurity:

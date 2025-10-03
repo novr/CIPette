@@ -1,14 +1,14 @@
 """Tests for SQL security utilities."""
 
-import pytest
-import sqlite3
 from unittest.mock import Mock
+
+import pytest
 
 from cipette.sql_security import (
     SafeSQLExecutor,
     SQLInjectionError,
-    safe_pragma_set,
     safe_identifier_query,
+    safe_pragma_set,
     validate_query_params,
 )
 

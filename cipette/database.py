@@ -352,7 +352,7 @@ def insert_run(run_id, workflow_id, run_number, commit_sha, branch, event, statu
                started_at, completed_at, duration_seconds, actor, url):
     """Insert or update a workflow run record with idempotency."""
     # Validate input parameters for SQL injection prevention
-    params = (run_id, workflow_id, run_number, commit_sha, branch, event, status, 
+    params = (run_id, workflow_id, run_number, commit_sha, branch, event, status,
               conclusion, started_at, completed_at, duration_seconds, actor, url)
     if not validate_query_params(params):
         raise ValueError("Invalid parameters detected - potential SQL injection")
@@ -624,7 +624,7 @@ def _build_metrics_query(repository=None, days=None):
     # Validate input parameters for SQL injection prevention
     if repository and not validate_query_params((repository,)):
         raise ValueError("Invalid repository parameter - potential SQL injection")
-    
+
     if days and (not isinstance(days, int) or days <= 0):
         raise ValueError("Invalid days parameter - must be positive integer")
     # Common metric aggregations (avoid duplication)
