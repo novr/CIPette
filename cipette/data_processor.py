@@ -148,26 +148,30 @@ class DataProcessor:
 
         for run in runs:
             try:
-                run_id = run.id
-                run_number = run.run_number
-                commit_sha = run.head_sha
-                branch = run.head_branch
-                event = run.event
-                status = run.status
-                conclusion = run.conclusion
+                # Safely access run attributes with fallbacks
+                run_id = getattr(run, 'id', None)
+                run_number = getattr(run, 'run_number', None)
+                commit_sha = getattr(run, 'head_sha', None)
+                branch = getattr(run, 'head_branch', None)
+                event = getattr(run, 'event', None)
+                status = getattr(run, 'status', None)
+                conclusion = getattr(run, 'conclusion', None)
 
                 # Parse timestamps
-                created_at = run.created_at
-                updated_at = run.updated_at
+                created_at = getattr(run, 'created_at', None)
+                updated_at = getattr(run, 'updated_at', None)
 
                 # Calculate duration
                 duration_seconds = None
                 if created_at and updated_at and status == 'completed':
                     duration_seconds = int((updated_at - created_at).total_seconds())
 
-                # Get actor
-                actor = run.actor.login if run.actor else 'unknown'
-                url = run.html_url
+                # Get actor (handle None actor)
+                actor = 'unknown'
+                if hasattr(run, 'actor') and run.actor and hasattr(run.actor, 'login'):
+                    actor = run.actor.login
+                
+                url = getattr(run, 'html_url', '')
 
                 runs_data.append(
                     (
@@ -188,7 +192,8 @@ class DataProcessor:
                 )
 
             except (AttributeError, TypeError, ValueError, IndexError) as e:
-                logger.warning(f'Skipping malformed run data: {e}')
+                logger.warning(f'Error processing runs for workflow {workflow_id}: {e}')
+                logger.debug(f'Run object type: {type(run)}, attributes: {dir(run) if hasattr(run, "__dict__") else "No attributes"}')
                 continue
 
         return runs_data

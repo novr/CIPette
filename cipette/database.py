@@ -985,11 +985,16 @@ def calculate_mttr(
         count = 0
 
         for row in rows:
-            failure_time = datetime.strptime(row['failure_time'], '%Y-%m-%d %H:%M:%S')
-            recovery_time = datetime.strptime(row['recovery_time'], '%Y-%m-%d %H:%M:%S')
-            delta = (recovery_time - failure_time).total_seconds()
-            total_seconds += delta
-            count += 1
+            try:
+                # Handle ISO 8601 format with timezone info
+                failure_time = datetime.fromisoformat(row['failure_time'].replace('Z', '+00:00'))
+                recovery_time = datetime.fromisoformat(row['recovery_time'].replace('Z', '+00:00'))
+                delta = (recovery_time - failure_time).total_seconds()
+                total_seconds += delta
+                count += 1
+            except ValueError as e:
+                logger.warning(f'Error parsing datetime for MTTR calculation: {e}')
+                continue
 
         return round(total_seconds / count, 2) if count > 0 else None
 
