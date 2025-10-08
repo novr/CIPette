@@ -16,6 +16,7 @@ select = [
 
 ignore = [
     "E501",  # line too long (handled by formatter)
+    "N802",  # function name should be lowercase (Config properties are intentionally uppercase)
 ]
 
 [format]

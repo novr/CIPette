@@ -1,12 +1,10 @@
 """Configuration management for CIPette application using TOML."""
 
 import logging
-import os
 import sys
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
-
 import tomllib
+from pathlib import Path
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +12,7 @@ logger = logging.getLogger(__name__)
 class ConfigManager:
     """Manages configuration settings from TOML file with environment variable overrides."""
 
-    def __init__(self, config_file: Optional[str] = None):
+    def __init__(self, config_file: str | None = None):
         """Initialize configuration manager.
 
         Args:
@@ -26,7 +24,7 @@ class ConfigManager:
             config_file = project_root / "config.toml"
 
         self.config_file = Path(config_file)
-        self._config: Dict[str, Any] = {}
+        self._config: dict[str, Any] = {}
         self._load_config()
 
     def _load_config(self) -> None:
@@ -41,7 +39,7 @@ class ConfigManager:
             )
             self._config = {}
         except tomllib.TOMLDecodeError as e:
-            raise ValueError(f"Invalid TOML configuration file: {e}")
+            raise ValueError(f"Invalid TOML configuration file: {e}") from e
 
     def get(self, key_path: str, default: Any = None) -> Any:
         """Get configuration value using dot notation.
@@ -70,7 +68,7 @@ class ConfigManager:
             return default
 
 
-    def get_database_config(self) -> Dict[str, Any]:
+    def get_database_config(self) -> dict[str, Any]:
         """Get database configuration.
 
         Returns:
@@ -86,7 +84,7 @@ class ConfigManager:
             'cache_ttl_seconds': self.get('database.cache_ttl_seconds'),
         }
 
-    def get_github_config(self) -> Dict[str, Any]:
+    def get_github_config(self) -> dict[str, Any]:
         """Get GitHub API configuration.
 
         Returns:
@@ -102,7 +100,7 @@ class ConfigManager:
             'rate_limit_display_threshold': self.get('github.rate_limit_display_threshold'),
         }
 
-    def get_data_collection_config(self) -> Dict[str, Any]:
+    def get_data_collection_config(self) -> dict[str, Any]:
         """Get data collection configuration.
 
         Returns:
@@ -116,7 +114,7 @@ class ConfigManager:
             'retry_backoff_factor': self.get('data_collection.retry_backoff_factor'),
         }
 
-    def get_web_config(self) -> Dict[str, Any]:
+    def get_web_config(self) -> dict[str, Any]:
         """Get web application configuration.
 
         Returns:
@@ -131,7 +129,7 @@ class ConfigManager:
             'mttr_worker_initial_delay': self.get('web.mttr_worker_initial_delay'),
         }
 
-    def get_logging_config(self) -> Dict[str, Any]:
+    def get_logging_config(self) -> dict[str, Any]:
         """Get logging configuration.
 
         Returns:
@@ -145,7 +143,7 @@ class ConfigManager:
             'separator_length': self.get('logging.separator_length'),
         }
 
-    def get_repositories_config(self) -> List[str]:
+    def get_repositories_config(self) -> list[str]:
         """Get target repositories configuration.
 
         Returns:
@@ -153,7 +151,7 @@ class ConfigManager:
         """
         return self.get('repositories.targets', ['owner/repo1', 'owner/repo2'])
 
-    def get_cache_config(self) -> Dict[str, Any]:
+    def get_cache_config(self) -> dict[str, Any]:
         """Get cache configuration.
 
         Returns:
@@ -163,7 +161,7 @@ class ConfigManager:
             'file': self.get('cache.file'),
         }
 
-    def get_health_score_config(self) -> Dict[str, Any]:
+    def get_health_score_config(self) -> dict[str, Any]:
         """Get health score configuration.
 
         Returns:
@@ -180,7 +178,7 @@ class ConfigManager:
             'throughput_min_days': self.get('health_score.throughput_min_days'),
         }
 
-    def get_sqlite_config(self) -> Dict[str, Any]:
+    def get_sqlite_config(self) -> dict[str, Any]:
         """Get SQLite configuration.
 
         Returns:
@@ -222,7 +220,7 @@ class ConfigManager:
         """Reload configuration from file."""
         self._load_config()
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Get all configuration as dictionary.
 
         Returns:
@@ -232,7 +230,7 @@ class ConfigManager:
 
 
 # Global configuration instance
-_config_manager: Optional[ConfigManager] = None
+_config_manager: ConfigManager | None = None
 
 
 def get_config_manager() -> ConfigManager:

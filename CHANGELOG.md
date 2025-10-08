@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2025-01-27
+
+### Added
+- TOML-based configuration system for flexible project settings
+- Centralized configuration management with `config.toml`
+- Enhanced configuration validation and error handling
+- Support for all application settings in single configuration file
+
+### Changed
+- Migrated from environment variables to TOML configuration
+- Removed dependency on `.env` file and `python-dotenv`
+- Updated setup instructions to use `config.toml.example`
+- Improved configuration loading with graceful fallbacks
+
+### Technical Improvements
+- Better separation of configuration concerns
+- Enhanced error messages for missing configuration
+- Improved code organization and maintainability
+- Fixed all linting issues and code quality improvements
+
 ## [0.1.1] - 2025-10-08
 
 ### Fixed

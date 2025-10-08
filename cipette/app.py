@@ -1,7 +1,6 @@
 """Flask web application for CIPette dashboard."""
 
 import logging
-import os
 import sqlite3
 import threading
 import time
@@ -11,9 +10,6 @@ from pathlib import Path
 from flask import Flask, render_template, request
 
 from cipette.config import Config
-
-# Create Config instance for property access
-config = Config()
 from cipette.database import (
     get_connection,
     get_metrics_by_repository,
@@ -23,6 +19,9 @@ from cipette.database import (
 from cipette.error_handling import ConfigurationError, DatabaseError
 from cipette.logging_config import setup_logging
 from cipette.version import get_version
+
+# Create Config instance for property access
+config = Config()
 
 # Initialize logging
 setup_logging()

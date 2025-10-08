@@ -4,14 +4,14 @@ This module provides backward compatibility with the old Config class
 while using the new TOML-based configuration system.
 """
 
-from typing import Any, Dict, List
+from typing import Any
 
 from .config_manager import get_config_manager
 
 
 class Config:
     """Centralized configuration for CIPette application.
-    
+
     This class provides backward compatibility while using the new TOML-based
     configuration system under the hood.
     """
@@ -146,7 +146,7 @@ class Config:
         return self._config_manager.get('logging.separator_length', 60)
 
     @property
-    def TARGET_REPOSITORIES(self) -> List[str]:
+    def TARGET_REPOSITORIES(self) -> list[str]:
         return self._config_manager.get_repositories_config()
 
     @property
@@ -154,7 +154,7 @@ class Config:
         return self._config_manager.get('cache.file', 'data/last_run.json')
 
     @property
-    def TIME_UNITS(self) -> List[tuple]:
+    def TIME_UNITS(self) -> list[tuple]:
         return self._config_manager.get('time_formatting.units', [["h", 3600], ["m", 60], ["s", 1]])
 
     @property
@@ -166,7 +166,7 @@ class Config:
         return self._config_manager.get('success_rate.medium_threshold', 70)
 
     @property
-    def HEALTH_SCORE_WEIGHTS(self) -> Dict[str, float]:
+    def HEALTH_SCORE_WEIGHTS(self) -> dict[str, float]:
         return self._config_manager.get('health_score.weights', {"success_rate": 0.35, "mttr": 0.25, "duration": 0.20, "throughput": 0.20})
 
     @property
@@ -220,7 +220,7 @@ class Config:
         config_manager.validate()
 
     @classmethod
-    def get_database_config(cls) -> Dict[str, Any]:
+    def get_database_config(cls) -> dict[str, Any]:
         """Get database configuration as dictionary.
 
         Returns:
@@ -230,7 +230,7 @@ class Config:
         return config_manager.get_database_config()
 
     @classmethod
-    def get_github_config(cls) -> Dict[str, Any]:
+    def get_github_config(cls) -> dict[str, Any]:
         """Get GitHub API configuration as dictionary.
 
         Returns:
@@ -240,7 +240,7 @@ class Config:
         return config_manager.get_github_config()
 
     @classmethod
-    def get_retry_config(cls) -> Dict[str, Any]:
+    def get_retry_config(cls) -> dict[str, Any]:
         """Get retry configuration as dictionary.
 
         Returns:
@@ -250,7 +250,7 @@ class Config:
         return config_manager.get_data_collection_config()
 
     @classmethod
-    def get_web_config(cls) -> Dict[str, Any]:
+    def get_web_config(cls) -> dict[str, Any]:
         """Get web application configuration as dictionary.
 
         Returns:
@@ -260,7 +260,7 @@ class Config:
         return config_manager.get_web_config()
 
     @classmethod
-    def get_logging_config(cls) -> Dict[str, Any]:
+    def get_logging_config(cls) -> dict[str, Any]:
         """Get logging configuration as dictionary.
 
         Returns:

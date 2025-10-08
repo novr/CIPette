@@ -2,9 +2,6 @@ import logging
 from datetime import UTC, datetime
 
 from cipette.config import Config
-
-# Create Config instance for property access
-config = Config()
 from cipette.data_processor import DataProcessor
 from cipette.database import initialize_database
 from cipette.error_handling import (
@@ -15,6 +12,9 @@ from cipette.etag_manager import ETagManager
 from cipette.github_client import GitHubClient
 from cipette.logging_config import setup_logging
 from cipette.retry import retry_api_call
+
+# Create Config instance for property access
+config = Config()
 
 # Initialize logging
 setup_logging()
