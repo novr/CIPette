@@ -29,14 +29,19 @@ uv sync  # Creates virtual environment automatically
 
 ### 2. Configure
 
-Copy the example configuration and update with your values:
+Copy the example configuration files and update with your values:
 
 ```bash
+# Copy environment variables (for sensitive data)
 cp env.example .env
-# Edit .env with your GitHub token and repositories
+# Edit .env with your GitHub token
+
+# Copy configuration file (for non-sensitive settings)
+cp config.toml.example config.toml
+# Edit config.toml with your repositories and settings
 ```
 
-> 📋 **See `env.example` for all available configuration options**
+> 📋 **See `env.example` for environment variables and `config.toml.example` for all configuration options**
 
 ### 3. Run
 

@@ -1,5 +1,6 @@
 """Configuration management for CIPette application using TOML."""
 
+import logging
 import os
 import sys
 from pathlib import Path
@@ -10,6 +11,8 @@ from dotenv import load_dotenv
 
 # Load environment variables from .env file
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 
 class ConfigManager:
@@ -36,7 +39,11 @@ class ConfigManager:
             with open(self.config_file, 'rb') as f:
                 self._config = tomllib.load(f)
         except FileNotFoundError:
-            raise FileNotFoundError(f"Configuration file not found: {self.config_file}")
+            logger.warning(
+                f"Configuration file not found: {self.config_file}. "
+                "Please copy config.toml.example to config.toml and customize it."
+            )
+            self._config = {}
         except tomllib.TOMLDecodeError as e:
             raise ValueError(f"Invalid TOML configuration file: {e}")
 
@@ -169,7 +176,7 @@ class ConfigManager:
         Returns:
             List of target repository names
         """
-        return self.get('repositories.targets', [])
+        return self.get('repositories.targets', ['owner/repo1', 'owner/repo2'])
 
     def get_cache_config(self) -> Dict[str, Any]:
         """Get cache configuration.

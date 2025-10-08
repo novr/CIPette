@@ -18,6 +18,9 @@ env/
 .env
 .envrc
 
+# Configuration files (user-specific)
+config.toml
+
 # Database
 data/
 *.db
