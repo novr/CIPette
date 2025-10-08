@@ -933,14 +933,14 @@ def _get_metrics_cached(
                     health_errors = health_result['errors']
                 else:
                     # All-time: Use cached health score
-                    health_score = row.get('overall_score', 0.0)
-                    health_class = row.get('health_class', 'unknown')
-                    data_quality = row.get('data_quality', 'insufficient')
+                    health_score = row['overall_score'] if 'overall_score' in row.keys() else 0.0
+                    health_class = row['health_class'] if 'health_class' in row.keys() else 'unknown'
+                    data_quality = row['data_quality'] if 'data_quality' in row.keys() else 'insufficient'
                     health_breakdown = {
-                        'success_rate_score': round(row.get('success_rate_score', 0.0), 1),
-                        'mttr_score': round(row.get('mttr_score', 0.0), 1),
-                        'duration_score': round(row.get('duration_score', 0.0), 1),
-                        'throughput_score': round(row.get('throughput_score', 0.0), 1),
+                        'success_rate_score': round(row['success_rate_score'] if 'success_rate_score' in row.keys() else 0.0, 1),
+                        'mttr_score': round(row['mttr_score'] if 'mttr_score' in row.keys() else 0.0, 1),
+                        'duration_score': round(row['duration_score'] if 'duration_score' in row.keys() else 0.0, 1),
+                        'throughput_score': round(row['throughput_score'] if 'throughput_score' in row.keys() else 0.0, 1),
                     }
                     health_warnings = []
                     health_errors = []

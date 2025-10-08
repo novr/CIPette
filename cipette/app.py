@@ -19,6 +19,7 @@ from cipette.database import (
 )
 from cipette.error_handling import ConfigurationError, DatabaseError
 from cipette.logging_config import setup_logging
+from cipette.version import get_version
 
 # Initialize logging
 setup_logging()
@@ -200,6 +201,19 @@ def has_errors(errors: list) -> bool:
         True if there are errors
     """
     return bool(errors and len(errors) > 0)
+
+
+@app.template_filter('app_version')
+def app_version(value: str = '') -> str:
+    """Get application version.
+
+    Args:
+        value: Template value (ignored)
+
+    Returns:
+        Version string
+    """
+    return get_version()
 
 
 # Helper functions

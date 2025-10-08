@@ -92,10 +92,17 @@ CIPette/
 │   ├── health_calculator.py    # Health score calculation
 │   ├── config.py               # Configuration
 │   ├── error_handling.py       # Error handling utilities
-│   └── retry.py                # Retry logic
+│   ├── retry.py                # Retry logic
+│   └── version.py              # Version information
+├── .github/workflows/          # GitHub Actions
+│   ├── test.yml                # Tests and security scans
+│   └── release.yml             # Automated releases
 ├── templates/                  # HTML templates
 ├── static/                     # CSS styles
-└── tests/                      # Test suite
+├── tests/                      # Test suite
+├── pyproject.toml              # Project configuration
+├── CHANGELOG.md                # Auto-generated changelog
+└── CONTRIBUTING.md             # Contribution guidelines
 ```
 
 ## Features
@@ -111,6 +118,33 @@ CIPette/
 - **Metrics Cache**: 1-minute TTL for fast loading
 - **Incremental Updates**: Only fetch new data
 - **Error Recovery**: Graceful handling of calculation failures
+
+### Version Management
+- **Automatic Semantic Versioning**: Based on conventional commits
+- **GitHub Actions Integration**: Automated releases on push to main
+- **Conventional Commits**: Automatic changelog generation
+- **Quality Gates**: Tests, linting, and security scans
+
+```bash
+# Commit Convention (Automatic Versioning)
+git commit -m "feat: add new feature"          # → Minor version bump
+git commit -m "fix: resolve bug"               # → Patch version bump
+git commit -m "feat!: breaking change"         # → Major version bump
+
+# Manual Version Management
+uv run python -c "from cipette.version import get_version; print(get_version())"  # Show current version
+uv run semantic-release version --print        # Preview next version
+uv run semantic-release changelog              # Generate changelog
+
+# Release Process
+# 1. Push conventional commits to main branch
+# 2. GitHub Actions automatically:
+#    - Runs tests and linting
+#    - Determines version bump
+#    - Creates git tag
+#    - Generates changelog
+#    - Creates GitHub release
+```
 
 ## Documentation
 
