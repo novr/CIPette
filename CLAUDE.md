@@ -25,4 +25,16 @@ AI開発ガイド: CIPetteプロジェクトでの作業指針
 ### テスト実行
 - `uv run pytest` でテスト実行
 
+### コミット前の品質チェック
+**必須手順**:
+1. **Lintチェック**: `uv run ruff check .`
+2. **コードフォーマット**: `uv run ruff format .`
+3. **テスト実行**: `uv run pytest tests/ -v`
+4. **再チェック**: `uv run ruff check .` と `uv run ruff format --check .`
+
+**品質保証**:
+- すべてのlintチェックが通過すること
+- すべてのテストが通過すること
+- コードフォーマットが統一されていること
+
 **方針**: 動作するソフトウェアを素早くリリース
