@@ -1,6 +1,5 @@
 """Tests for version management."""
 
-import pytest
 from cipette.version import get_version
 
 
@@ -13,7 +12,8 @@ def test_get_version():
 
 def test_version_format():
     """Test version format is valid."""
+    import re
+
     version = get_version()
     # Should be in format X.Y.Z (or X.Y.Z-suffix for prereleases)
-    import re
     assert re.match(r'^\d+\.\d+\.\d+(?:[.-].*)?$', version), f"Invalid version format: {version}"

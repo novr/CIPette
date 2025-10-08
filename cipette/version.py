@@ -4,29 +4,28 @@ This module provides version information for the CIPette project.
 The version is automatically managed by python-semantic-release.
 """
 
-import re
 import tomllib
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 
-def _get_pyproject_data() -> Dict[str, Any]:
+def _get_pyproject_data() -> dict[str, Any]:
     """Get pyproject.toml data.
-    
+
     Returns:
         Parsed TOML data
     """
     # Get project root (go up from cipette/ to project root)
     project_root = Path(__file__).parent.parent
     pyproject_file = project_root / "pyproject.toml"
-    
+
     with open(pyproject_file, 'rb') as f:
         return tomllib.load(f)
 
 
 def _get_version_from_pyproject() -> str:
     """Get version from pyproject.toml.
-    
+
     Returns:
         Version string from pyproject.toml
     """
@@ -34,7 +33,7 @@ def _get_version_from_pyproject() -> str:
         data = _get_pyproject_data()
         return data['project']['version']
     except (KeyError, FileNotFoundError) as e:
-        raise ValueError(f"Version not found in pyproject.toml: {e}")
+        raise ValueError(f"Version not found in pyproject.toml: {e}") from e
 
 
 # Get version from pyproject.toml (managed by python-semantic-release)
