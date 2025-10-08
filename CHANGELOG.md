@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] - 2025-01-27
+
+### Fixed
+- Resolve CI test failures in data collector tests
+- Fix GITHUB_TOKEN validation in test environment
+- Improve test mocking for GitHubClient methods
+- Fix code formatting issues across all Python files
+- Update version tests to reflect current version
+
+### Technical Improvements
+- Enhanced test stability and reliability
+- Improved CI/CD pipeline consistency
+- Better error handling in test environment
+
 ## [0.1.0] - 2025-01-27
 
 ### Added

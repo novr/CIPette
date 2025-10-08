@@ -7,7 +7,7 @@ def test_get_version():
     """Test version string retrieval."""
     version = get_version()
     assert isinstance(version, str)
-    assert version == '0.1.0'
+    assert version == '1.0.1'
 
 
 def test_version_format():
