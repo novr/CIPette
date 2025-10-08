@@ -46,6 +46,7 @@ jobs:
         run: uv build
 
       - name: Semantic Release
+        id: semantic-release
         run: uv run semantic-release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
