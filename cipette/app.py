@@ -234,7 +234,9 @@ def get_available_repositories() -> list[str]:
             cursor = conn.cursor()
             cursor.execute('SELECT DISTINCT name FROM repositories ORDER BY name')
             rows = cursor.fetchall()
-            return [row['name'] for row in rows]
+            repositories = [row['name'] for row in rows]
+            logger.info(f'Found {len(repositories)} repositories: {repositories}')
+            return repositories
     except sqlite3.OperationalError as e:
         logger.error(f'Database operational error: {e}')
         raise DatabaseError(f'Database operation failed: {e}') from e
