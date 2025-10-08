@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cipette"
-version = "1.0.1"
+version = "0.1.1"
 description = "CI/CD Insights Dashboard - Collect and visualize GitHub Actions workflow metrics"
 readme = "README.md"
 requires-python = ">=3.11"
