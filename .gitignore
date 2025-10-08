@@ -14,10 +14,6 @@ env/
 # uv
 .python-version
 
-# Environment Variables
-.env
-.envrc
-
 # Configuration files (user-specific)
 config.toml
 

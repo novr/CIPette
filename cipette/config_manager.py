@@ -7,10 +7,6 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 import tomllib
-from dotenv import load_dotenv
-
-# Load environment variables from .env file
-load_dotenv()
 
 logger = logging.getLogger(__name__)
 
@@ -73,27 +69,6 @@ class ConfigManager:
         except (KeyError, TypeError):
             return default
 
-    def get_with_env_override(self, key_path: str, env_var: str, default: Any = None) -> Any:
-        """Get configuration value with environment variable override.
-        
-        This method is kept for backward compatibility but only supports
-        GITHUB_TOKEN environment variable override.
-
-        Args:
-            key_path: Dot-separated path to configuration value
-            env_var: Environment variable name to check for override
-            default: Default value if neither config nor env var is found
-
-        Returns:
-            Configuration value, environment variable value, or default
-        """
-        # Only allow GITHUB_TOKEN override for security
-        if env_var == 'GITHUB_TOKEN':
-            env_value = os.getenv(env_var)
-            if env_value is not None:
-                return env_value
-
-        return self.get(key_path, default)
 
     def get_database_config(self) -> Dict[str, Any]:
         """Get database configuration.
@@ -118,7 +93,7 @@ class ConfigManager:
             Dictionary with GitHub configuration
         """
         return {
-            'token': self.get_with_env_override('github.token', 'GITHUB_TOKEN'),
+            'token': self.get('github.token'),
             'base_url': self.get('github.base_url'),
             'timeout': self.get('github.timeout'),
             'rate_limit_warning': self.get('github.rate_limit_warning_threshold'),
@@ -227,19 +202,21 @@ class ConfigManager:
         if 'pytest' in sys.modules or 'test' in sys.argv:
             return
 
-        github_token = self.get_with_env_override('github.token', 'GITHUB_TOKEN')
-        if not github_token:
-            raise ValueError('GITHUB_TOKEN environment variable is required')
+        github_token = self.get('github.token')
+        if not github_token or github_token == 'ghp_your_token_here':
+            raise ValueError('GitHub token not configured. Please set github.token in config.toml')
 
-        max_workflow_runs = self.get_with_env_override(
-            'data_collection.max_workflow_runs', 'MAX_WORKFLOW_RUNS', 10
-        )
+        target_repositories = self.get_repositories_config()
+        if not target_repositories or target_repositories == ['owner/repo1', 'owner/repo2']:
+            raise ValueError('Target repositories not configured. Please set repositories.targets in config.toml')
+
+        max_workflow_runs = self.get('data_collection.max_workflow_runs', 10)
         if max_workflow_runs <= 0:
-            raise ValueError('MAX_WORKFLOW_RUNS must be positive')
+            raise ValueError('max_workflow_runs must be positive')
 
-        retry_max_attempts = self.get('data_collection.retry_max_attempts')
+        retry_max_attempts = self.get('data_collection.retry_max_attempts', 3)
         if retry_max_attempts <= 0:
-            raise ValueError('RETRY_MAX_ATTEMPTS must be positive')
+            raise ValueError('retry_max_attempts must be positive')
 
     def reload(self) -> None:
         """Reload configuration from file."""

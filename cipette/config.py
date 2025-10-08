@@ -55,7 +55,7 @@ class Config:
 
     @property
     def GITHUB_TOKEN(self) -> str:
-        return self._config_manager.get_with_env_override('github.token', 'GITHUB_TOKEN')
+        return self._config_manager.get('github.token', 'ghp_your_token_here')
 
     @property
     def GITHUB_API_BASE_URL(self) -> str:
