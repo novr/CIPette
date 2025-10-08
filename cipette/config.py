@@ -83,9 +83,7 @@ class Config:
 
     @property
     def MAX_WORKFLOW_RUNS(self) -> int:
-        return self._config_manager.get_with_env_override(
-            'data_collection.max_workflow_runs', 'MAX_WORKFLOW_RUNS', 10
-        )
+        return self._config_manager.get('data_collection.max_workflow_runs')
 
     @property
     def MAX_WORKFLOWS_PER_REPO(self) -> int:
@@ -121,9 +119,7 @@ class Config:
 
     @property
     def MTTR_REFRESH_INTERVAL(self) -> int:
-        return self._config_manager.get_with_env_override(
-            'web.mttr_refresh_interval', 'MTTR_REFRESH_INTERVAL', 300
-        )
+        return self._config_manager.get('web.mttr_refresh_interval')
 
     @property
     def MTTR_WORKER_INITIAL_DELAY(self) -> int:

@@ -358,9 +358,9 @@ def start_cache_refresh_worker() -> None:
 # Main entry point
 def main() -> None:
     """Main entry point for Flask application."""
-    debug = os.getenv('FLASK_DEBUG', 'False').lower() == 'true'
-    host = os.getenv('FLASK_HOST', config.WEB_HOST)
-    port = int(os.getenv('FLASK_PORT', config.WEB_DEFAULT_PORT))
+    debug = config.WEB_DEBUG
+    host = config.WEB_HOST
+    port = config.WEB_PORT
 
     logger.info('Starting CIPette web dashboard...')
     logger.info(f'Access dashboard at: http://{host}:{port}')

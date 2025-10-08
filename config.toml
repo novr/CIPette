@@ -88,11 +88,5 @@ synchronous = "NORMAL"
 temp_store = "MEMORY"
 
 # Environment variable overrides
-# The following settings can be overridden by environment variables:
-# - GITHUB_TOKEN: GitHub Personal Access Token (sensitive)
-# - TARGET_REPOSITORIES: Comma-separated list of repositories
-# - MAX_WORKFLOW_RUNS: Maximum number of workflow runs to collect
-# - MTTR_REFRESH_INTERVAL: MTTR cache refresh interval in seconds
-# - FLASK_DEBUG: Flask debug mode (true/false)
-# - FLASK_HOST: Flask host address
-# - FLASK_PORT: Flask port number
+# Only GITHUB_TOKEN can be overridden via environment variable for security.
+# All other settings are managed directly in this TOML file.

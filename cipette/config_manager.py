@@ -68,6 +68,9 @@ class ConfigManager:
 
     def get_with_env_override(self, key_path: str, env_var: str, default: Any = None) -> Any:
         """Get configuration value with environment variable override.
+        
+        This method is kept for backward compatibility but only supports
+        GITHUB_TOKEN environment variable override.
 
         Args:
             key_path: Dot-separated path to configuration value
@@ -77,26 +80,10 @@ class ConfigManager:
         Returns:
             Configuration value, environment variable value, or default
         """
-        # Check environment variable first
-        env_value = os.getenv(env_var)
-        if env_value is not None:
-            # Try to convert to appropriate type
-            config_value = self.get(key_path, default)
-            if isinstance(config_value, bool):
-                return env_value.lower() in ('true', '1', 'yes', 'on')
-            elif isinstance(config_value, int):
-                try:
-                    return int(env_value)
-                except ValueError:
-                    return env_value
-            elif isinstance(config_value, float):
-                try:
-                    return float(env_value)
-                except ValueError:
-                    return env_value
-            elif isinstance(config_value, list):
-                return [item.strip() for item in env_value.split(',') if item.strip()]
-            else:
+        # Only allow GITHUB_TOKEN override for security
+        if env_var == 'GITHUB_TOKEN':
+            env_value = os.getenv(env_var)
+            if env_value is not None:
                 return env_value
 
         return self.get(key_path, default)
@@ -140,9 +127,7 @@ class ConfigManager:
             Dictionary with data collection configuration
         """
         return {
-            'max_workflow_runs': self.get_with_env_override(
-                'data_collection.max_workflow_runs', 'MAX_WORKFLOW_RUNS', 10
-            ),
+            'max_workflow_runs': self.get('data_collection.max_workflow_runs'),
             'max_workflows_per_repo': self.get('data_collection.max_workflows_per_repo'),
             'retry_max_attempts': self.get('data_collection.retry_max_attempts'),
             'retry_delay': self.get('data_collection.retry_delay'),
@@ -156,13 +141,11 @@ class ConfigManager:
             Dictionary with web configuration
         """
         return {
-            'host': self.get_with_env_override('web.host', 'FLASK_HOST'),
-            'port': self.get_with_env_override('web.port', 'FLASK_PORT'),
-            'debug': self.get_with_env_override('web.debug', 'FLASK_DEBUG'),
+            'host': self.get('web.host'),
+            'port': self.get('web.port'),
+            'debug': self.get('web.debug'),
             'default_port': self.get('web.default_port'),
-            'mttr_refresh_interval': self.get_with_env_override(
-                'web.mttr_refresh_interval', 'MTTR_REFRESH_INTERVAL', 300
-            ),
+            'mttr_refresh_interval': self.get('web.mttr_refresh_interval'),
             'mttr_worker_initial_delay': self.get('web.mttr_worker_initial_delay'),
         }
 
@@ -186,7 +169,7 @@ class ConfigManager:
         Returns:
             List of target repository names
         """
-        return self.get_with_env_override('repositories.targets', 'TARGET_REPOSITORIES', [])
+        return self.get('repositories.targets', [])
 
     def get_cache_config(self) -> Dict[str, Any]:
         """Get cache configuration.
