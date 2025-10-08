@@ -283,6 +283,60 @@ tbody tr:hover {
     color: var(--color-error);
 }
 
+/* Data Quality Indicators */
+.data-quality-indicator {
+    font-size: 0.9rem;
+    margin-left: 0.25rem;
+}
+
+.data-quality-excellent {
+    color: var(--color-success);
+}
+
+.data-quality-good {
+    color: var(--color-warning);
+}
+
+.data-quality-fair {
+    color: #f97316;
+}
+
+.data-quality-poor {
+    color: var(--color-error);
+}
+
+.data-quality-insufficient {
+    color: var(--color-text-muted);
+}
+
+/* Health Alerts */
+.health-alerts {
+    display: flex;
+    gap: 0.25rem;
+    margin-top: 0.25rem;
+    justify-content: center;
+}
+
+.alert-error {
+    color: var(--color-error);
+    font-size: 0.8rem;
+}
+
+.alert-warning {
+    color: var(--color-warning);
+    font-size: 0.8rem;
+}
+
+/* Health Score with Data Quality Issues */
+.health-score.health-unknown {
+    background: rgba(107, 114, 128, 0.1);
+    border-radius: 4px;
+}
+
+.health-score.health-unknown .health-value {
+    color: var(--color-text-muted);
+}
+
 /* Success Rate Colors */
 .success-rate {
     font-weight: 600;

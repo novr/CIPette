@@ -136,9 +136,69 @@ def health_emoji(health_class: str) -> str:
         'excellent': '🟢',
         'good': '🟡', 
         'fair': '🟠',
-        'poor': '🔴'
+        'poor': '🔴',
+        'unknown': '⚪'
     }
     return emoji_map.get(health_class, '⚪')
+
+
+@app.template_filter('data_quality_emoji')
+def data_quality_emoji(data_quality: str) -> str:
+    """Get emoji for data quality level.
+    
+    Args:
+        data_quality: Data quality level ('excellent', 'good', 'fair', 'poor', 'insufficient')
+        
+    Returns:
+        Emoji string
+    """
+    emoji_map = {
+        'excellent': '✅',
+        'good': '👍',
+        'fair': '⚠️',
+        'poor': '❌',
+        'insufficient': '❓'
+    }
+    return emoji_map.get(data_quality, '❓')
+
+
+@app.template_filter('data_quality_class')
+def data_quality_class(data_quality: str) -> str:
+    """Get CSS class for data quality level.
+    
+    Args:
+        data_quality: Data quality level
+        
+    Returns:
+        CSS class name
+    """
+    return f'data-quality-{data_quality}'
+
+
+@app.template_filter('has_warnings')
+def has_warnings(warnings: list) -> bool:
+    """Check if there are any warnings.
+    
+    Args:
+        warnings: List of warning messages
+        
+    Returns:
+        True if there are warnings
+    """
+    return bool(warnings and len(warnings) > 0)
+
+
+@app.template_filter('has_errors')
+def has_errors(errors: list) -> bool:
+    """Check if there are any errors.
+    
+    Args:
+        errors: List of error messages
+        
+    Returns:
+        True if there are errors
+    """
+    return bool(errors and len(errors) > 0)
 
 
 # Helper functions

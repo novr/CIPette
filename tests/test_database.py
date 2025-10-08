@@ -304,7 +304,7 @@ def test_get_metrics_by_repository(test_db):
 
 
 def test_calculate_health_score():
-    """Test health score calculation."""
+    """Test legacy health score calculation."""
     from cipette.database import calculate_health_score, get_health_score_class
     
     # Test excellent health score
@@ -342,6 +342,103 @@ def test_calculate_health_score():
     assert get_health_score_class(75.0) == 'good'
     assert get_health_score_class(60.0) == 'fair'
     assert get_health_score_class(30.0) == 'poor'
+
+
+def test_health_calculator_robust():
+    """Test robust health score calculator with error handling."""
+    from cipette.health_calculator import HealthScoreCalculator, DataQuality
+    
+    calculator = HealthScoreCalculator()
+    
+    # Test excellent health score
+    result = calculator.calculate_health_score(
+        success_rate=95.0,
+        mttr_seconds=300.0,
+        avg_duration_seconds=600.0,
+        total_runs=30,
+        days=30
+    )
+    
+    assert result.overall_score > 80
+    assert result.health_class == 'excellent'
+    assert result.data_quality == DataQuality.EXCELLENT
+    assert len(result.warnings) == 0
+    assert len(result.errors) == 0
+    
+    # Test with missing data
+    result = calculator.calculate_health_score(
+        success_rate=None,
+        mttr_seconds=None,
+        avg_duration_seconds=600.0,
+        total_runs=5,
+        days=30
+    )
+    
+    assert result.data_quality == DataQuality.FAIR  # 2 out of 4 metrics available
+    assert len(result.warnings) > 0
+    assert 'Success rate data not available' in result.warnings
+    assert 'MTTR data not available - assuming no failures' in result.warnings
+    
+    # Test with invalid data
+    result = calculator.calculate_health_score(
+        success_rate=-10.0,  # Invalid negative value
+        mttr_seconds="invalid",  # Invalid type
+        avg_duration_seconds=600.0,
+        total_runs=5,
+        days=30
+    )
+    
+    assert len(result.warnings) > 0
+    assert any('Success rate out of valid range' in w for w in result.warnings)
+    assert any('Invalid MTTR type' in w for w in result.warnings)
+    
+    # Test with insufficient data
+    result = calculator.calculate_health_score(
+        success_rate=None,
+        mttr_seconds=None,
+        avg_duration_seconds=None,
+        total_runs=0,
+        days=30
+    )
+    
+    assert result.data_quality == DataQuality.INSUFFICIENT
+    assert result.health_class == 'poor'
+
+
+def test_health_calculator_edge_cases():
+    """Test health calculator with edge cases."""
+    from cipette.health_calculator import HealthScoreCalculator
+    
+    calculator = HealthScoreCalculator()
+    
+    # Test with zero values
+    result = calculator.calculate_health_score(
+        success_rate=0.0,
+        mttr_seconds=0.0,
+        avg_duration_seconds=0.0,
+        total_runs=1,
+        days=1
+    )
+    
+    assert result.overall_score >= 0
+    assert len(result.warnings) > 0
+    assert any('MTTR is zero' in w for w in result.warnings)
+    assert any('Duration is zero' in w for w in result.warnings)
+    
+    # Test with extreme values
+    result = calculator.calculate_health_score(
+        success_rate=150.0,  # Over 100%
+        mttr_seconds=86400.0,  # 24 hours
+        avg_duration_seconds=3600.0,  # 1 hour
+        total_runs=1000,
+        days=1
+    )
+    
+    assert result.overall_score <= 100
+    assert len(result.warnings) > 0
+    assert any('Success rate out of valid range' in w for w in result.warnings)
+    assert any('MTTR exceeds maximum threshold' in w for w in result.warnings)
+    assert any('Duration exceeds maximum threshold' in w for w in result.warnings)
 
 
 def test_calculate_mttr(test_db):

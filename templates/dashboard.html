@@ -53,9 +53,23 @@
                     <div class="health-indicator">
                         <span class="health-emoji">{{ metric.health_class|health_emoji }}</span>
                         <span class="health-value">{{ metric.health_score }}</span>
+                        <span class="data-quality-indicator {{ metric.data_quality|data_quality_class }}" 
+                              title="Data Quality: {{ metric.data_quality|title }}">
+                            {{ metric.data_quality|data_quality_emoji }}
+                        </span>
                     </div>
                     <div class="health-breakdown" title="Success Rate: {{ metric.health_breakdown.success_rate_score }}%, MTTR: {{ metric.health_breakdown.mttr_score }}%, Duration: {{ metric.health_breakdown.duration_score }}%, Throughput: {{ metric.health_breakdown.throughput_score }}%">
                         <small>{{ metric.health_class|title }}</small>
+                        {% if metric.health_warnings|has_warnings or metric.health_errors|has_errors %}
+                            <div class="health-alerts">
+                                {% if metric.health_errors|has_errors %}
+                                    <span class="alert-error" title="Errors: {{ metric.health_errors|join(', ') }}">⚠️</span>
+                                {% endif %}
+                                {% if metric.health_warnings|has_warnings %}
+                                    <span class="alert-warning" title="Warnings: {{ metric.health_warnings|join(', ') }}">⚠️</span>
+                                {% endif %}
+                            </div>
+                        {% endif %}
                     </div>
                 </td>
                 <td class="repo-name">{{ metric.repository }}</td>
