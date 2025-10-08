@@ -139,6 +139,7 @@ def test_collect_all_data_no_token(collector):
 def test_collect_all_data_no_repositories(collector):
     """Test behavior when TARGET_REPOSITORIES is not set."""
     with (
+        patch('cipette.config.Config.GITHUB_TOKEN', 'fake_token'),
         patch('cipette.config.Config.TARGET_REPOSITORIES', []),
         patch('cipette.collector.initialize_database'),
         pytest.raises(ConfigurationError, match='TARGET_REPOSITORIES not configured'),
