@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.2] - 2025-01-08
+
+### Fixed
+- Fix `sqlite3.Row` object access error in health score processing
+- Resolve `IndexError: No item with that key` when accessing cached health scores
+- Add missing health score columns to all-time metrics query
+- Ensure proper health score display in dashboard
+
+### Technical Improvements
+- Improved database query construction for health score cache
+- Enhanced error handling for SQLite row access
+- Better null value handling in health score calculations
+
 ## [0.2.1] - 2025-01-27
 
 ### Fixed

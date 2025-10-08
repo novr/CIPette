@@ -815,9 +815,19 @@ def _build_metrics_query(
                     AND r1.started_at >= datetime('now', '-' || ? || ' days')
             ) as mttr_seconds
         """
+        health_select = ""
     else:
         # All-time: Use pre-computed cache (fast)
         mttr_select = 'c.mttr_seconds'
+        health_select = """
+            , h.overall_score
+            , h.health_class
+            , h.data_quality
+            , h.success_rate_score
+            , h.mttr_score
+            , h.duration_score
+            , h.throughput_score
+        """
 
     # Build WHERE conditions
     where_conditions = ["r.status = 'completed'"]
@@ -857,7 +867,7 @@ def _build_metrics_query(
             w.name as workflow_name,
             w.id as workflow_id,
             {metrics_select},
-            {mttr_select}
+            {mttr_select}{health_select}
         FROM workflows w
         {joins}
         WHERE {where_clause}
@@ -943,16 +953,16 @@ def _get_metrics_cached(
                     health_errors = health_result['errors']
                 else:
                     # All-time: Use cached health score
-                    health_score = row.get('overall_score', 0.0)
-                    health_class = row.get('health_class', 'unknown')
-                    data_quality = row.get('data_quality', 'insufficient')
+                    health_score = row['overall_score'] if row['overall_score'] is not None else 0.0
+                    health_class = row['health_class'] if row['health_class'] is not None else 'unknown'
+                    data_quality = row['data_quality'] if row['data_quality'] is not None else 'insufficient'
                     health_breakdown = {
                         'success_rate_score': round(
-                            row.get('success_rate_score', 0.0), 1
+                            row['success_rate_score'] if row['success_rate_score'] is not None else 0.0, 1
                         ),
-                        'mttr_score': round(row.get('mttr_score', 0.0), 1),
-                        'duration_score': round(row.get('duration_score', 0.0), 1),
-                        'throughput_score': round(row.get('throughput_score', 0.0), 1),
+                        'mttr_score': round(row['mttr_score'] if row['mttr_score'] is not None else 0.0, 1),
+                        'duration_score': round(row['duration_score'] if row['duration_score'] is not None else 0.0, 1),
+                        'throughput_score': round(row['throughput_score'] if row['throughput_score'] is not None else 0.0, 1),
                     }
                     health_warnings = []
                     health_errors = []
