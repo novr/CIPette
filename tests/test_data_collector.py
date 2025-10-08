@@ -11,7 +11,10 @@ from cipette.error_handling import ConfigurationError
 @pytest.fixture
 def collector():
     """Create a GitHubDataCollector instance with mocked GitHubClient."""
-    with patch('cipette.github_client.GitHubClient'):
+    with (
+        patch('cipette.github_client.GitHubClient'),
+        patch('cipette.config.Config.GITHUB_TOKEN', 'fake_token_for_testing')
+    ):
         collector = GitHubDataCollector()
         return collector
 
@@ -82,24 +85,17 @@ def test_collect_repository_data_github_exception(collector):
     """Test handling of GitHub API errors."""
     from github import GithubException
 
-    mock_github = Mock()
-    mock_github.get_repo.side_effect = GithubException(404, {'message': 'Not Found'})
+    # Mock the github_client methods directly
+    with (
+        patch.object(collector.github_client, 'check_rate_limit', return_value=5000),
+        patch.object(collector.github_client, 'get_repository') as mock_get_repo,
+    ):
+        mock_get_repo.side_effect = GithubException(404, {'message': 'Not Found'})
 
-    # Mock rate limit
-    mock_rate_limit = Mock()
-    mock_rate_limit.resources.core.remaining = 5000
-    mock_rate_limit.resources.core.limit = 5000
-    mock_reset = Mock()
-    mock_reset.strftime.return_value = '2025-01-01 12:00:00'
-    mock_rate_limit.resources.core.reset = mock_reset
-    mock_github.get_rate_limit.return_value = mock_rate_limit
-
-    collector.github = mock_github
-
-    # Should return 0, 0 on error
-    wf_count, run_count = collector.collect_repository_data('owner/nonexistent')
-    assert wf_count == 0
-    assert run_count == 0
+        # Should return 0, 0 on error
+        wf_count, run_count = collector.collect_repository_data('owner/nonexistent')
+        assert wf_count == 0
+        assert run_count == 0
 
 
 def test_collect_repository_data_success(collector):
@@ -168,6 +164,8 @@ def test_collect_all_data_with_last_run(collector, tmp_path):
         patch('cipette.config.Config.GITHUB_TOKEN', 'fake_token'),
         patch('cipette.config.Config.TARGET_REPOSITORIES', ['owner/repo']),
         patch('cipette.collector.initialize_database'),
+        patch.object(collector.github_client, 'check_rate_limit', return_value=5000),
+        patch.object(collector.github_client, 'wait_for_rate_limit_reset'),
         patch.object(
             collector, 'collect_repository_data', return_value=(1, 1)
         ) as mock_collect,
