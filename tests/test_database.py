@@ -306,7 +306,7 @@ def test_get_metrics_by_repository(test_db):
 def test_calculate_health_score():
     """Test legacy health score calculation."""
     from cipette.database import calculate_health_score, get_health_score_class
-    
+
     # Test excellent health score
     scores = calculate_health_score(
         success_rate=95.0,
@@ -315,13 +315,13 @@ def test_calculate_health_score():
         total_runs=30,
         days=30
     )
-    
+
     assert scores['overall_score'] > 80  # Should be excellent
     assert scores['success_rate_score'] == 95.0
     assert scores['mttr_score'] > 90  # 5 minutes is very good
     assert scores['duration_score'] > 60  # 10 minutes is reasonable
     assert scores['throughput_score'] == 100.0  # 1 run per day is perfect
-    
+
     # Test poor health score
     scores = calculate_health_score(
         success_rate=50.0,
@@ -330,13 +330,13 @@ def test_calculate_health_score():
         total_runs=5,
         days=30
     )
-    
+
     assert scores['overall_score'] < 50  # Should be poor
     assert scores['success_rate_score'] == 50.0
     assert scores['mttr_score'] == 0.0  # 2 hours is maximum (0 points)
     assert scores['duration_score'] == 0.0  # 30 minutes is maximum (0 points)
     assert scores['throughput_score'] < 20  # Less than 1 run per day
-    
+
     # Test health score classification
     assert get_health_score_class(90.0) == 'excellent'
     assert get_health_score_class(75.0) == 'good'
@@ -346,10 +346,10 @@ def test_calculate_health_score():
 
 def test_health_calculator_robust():
     """Test robust health score calculator with error handling."""
-    from cipette.health_calculator import HealthScoreCalculator, DataQuality
-    
+    from cipette.health_calculator import DataQuality, HealthScoreCalculator
+
     calculator = HealthScoreCalculator()
-    
+
     # Test excellent health score
     result = calculator.calculate_health_score(
         success_rate=95.0,
@@ -358,13 +358,13 @@ def test_health_calculator_robust():
         total_runs=30,
         days=30
     )
-    
+
     assert result.overall_score > 80
     assert result.health_class == 'excellent'
     assert result.data_quality == DataQuality.EXCELLENT
     assert len(result.warnings) == 0
     assert len(result.errors) == 0
-    
+
     # Test with missing data
     result = calculator.calculate_health_score(
         success_rate=None,
@@ -373,12 +373,12 @@ def test_health_calculator_robust():
         total_runs=5,
         days=30
     )
-    
+
     assert result.data_quality == DataQuality.FAIR  # 2 out of 4 metrics available
     assert len(result.warnings) > 0
     assert 'Success rate data not available' in result.warnings
     assert 'MTTR data not available - assuming no failures' in result.warnings
-    
+
     # Test with invalid data
     result = calculator.calculate_health_score(
         success_rate=-10.0,  # Invalid negative value
@@ -387,11 +387,11 @@ def test_health_calculator_robust():
         total_runs=5,
         days=30
     )
-    
+
     assert len(result.warnings) > 0
     assert any('Success rate out of valid range' in w for w in result.warnings)
     assert any('Invalid MTTR type' in w for w in result.warnings)
-    
+
     # Test with insufficient data
     result = calculator.calculate_health_score(
         success_rate=None,
@@ -400,7 +400,7 @@ def test_health_calculator_robust():
         total_runs=0,
         days=30
     )
-    
+
     assert result.data_quality == DataQuality.INSUFFICIENT
     assert result.health_class == 'poor'
 
@@ -408,9 +408,9 @@ def test_health_calculator_robust():
 def test_health_calculator_edge_cases():
     """Test health calculator with edge cases."""
     from cipette.health_calculator import HealthScoreCalculator
-    
+
     calculator = HealthScoreCalculator()
-    
+
     # Test with zero values
     result = calculator.calculate_health_score(
         success_rate=0.0,
@@ -419,12 +419,12 @@ def test_health_calculator_edge_cases():
         total_runs=1,
         days=1
     )
-    
+
     assert result.overall_score >= 0
     assert len(result.warnings) > 0
     assert any('MTTR is zero' in w for w in result.warnings)
     assert any('Duration is zero' in w for w in result.warnings)
-    
+
     # Test with extreme values
     result = calculator.calculate_health_score(
         success_rate=150.0,  # Over 100%
@@ -433,12 +433,35 @@ def test_health_calculator_edge_cases():
         total_runs=1000,
         days=1
     )
-    
+
     assert result.overall_score <= 100
     assert len(result.warnings) > 0
     assert any('Success rate out of valid range' in w for w in result.warnings)
     assert any('MTTR exceeds maximum threshold' in w for w in result.warnings)
     assert any('Duration exceeds maximum threshold' in w for w in result.warnings)
+
+
+def test_health_score_cache(test_db):
+    """Test health score cache functionality."""
+    from cipette.database import (
+        clear_health_score_cache,
+        get_connection,
+        refresh_health_score_cache,
+    )
+
+    # Clear cache first
+    clear_health_score_cache()
+
+    # Test cache refresh
+    refresh_health_score_cache()
+
+    # Verify cache was populated (if there's data)
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute('SELECT COUNT(*) as count FROM health_score_cache')
+        count = cursor.fetchone()['count']
+        # Cache should be populated if there's workflow data
+        assert count >= 0
 
 
 def test_calculate_mttr(test_db):

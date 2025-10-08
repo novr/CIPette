@@ -14,6 +14,7 @@ from cipette.config import Config
 from cipette.database import (
     get_connection,
     get_metrics_by_repository,
+    refresh_health_score_cache,
     refresh_mttr_cache,
 )
 from cipette.error_handling import ConfigurationError, DatabaseError
@@ -112,10 +113,10 @@ def format_mttr(seconds: float | None) -> str:
 @app.template_filter('health_class')
 def health_class(health_class: str) -> str:
     """Get CSS class for health score classification.
-    
+
     Args:
         health_class: Health classification ('excellent', 'good', 'fair', 'poor')
-        
+
     Returns:
         CSS class name
     """
@@ -125,16 +126,16 @@ def health_class(health_class: str) -> str:
 @app.template_filter('health_emoji')
 def health_emoji(health_class: str) -> str:
     """Get emoji for health score classification.
-    
+
     Args:
         health_class: Health classification ('excellent', 'good', 'fair', 'poor')
-        
+
     Returns:
         Emoji string
     """
     emoji_map = {
         'excellent': '🟢',
-        'good': '🟡', 
+        'good': '🟡',
         'fair': '🟠',
         'poor': '🔴',
         'unknown': '⚪'
@@ -145,10 +146,10 @@ def health_emoji(health_class: str) -> str:
 @app.template_filter('data_quality_emoji')
 def data_quality_emoji(data_quality: str) -> str:
     """Get emoji for data quality level.
-    
+
     Args:
         data_quality: Data quality level ('excellent', 'good', 'fair', 'poor', 'insufficient')
-        
+
     Returns:
         Emoji string
     """
@@ -165,10 +166,10 @@ def data_quality_emoji(data_quality: str) -> str:
 @app.template_filter('data_quality_class')
 def data_quality_class(data_quality: str) -> str:
     """Get CSS class for data quality level.
-    
+
     Args:
         data_quality: Data quality level
-        
+
     Returns:
         CSS class name
     """
@@ -178,10 +179,10 @@ def data_quality_class(data_quality: str) -> str:
 @app.template_filter('has_warnings')
 def has_warnings(warnings: list) -> bool:
     """Check if there are any warnings.
-    
+
     Args:
         warnings: List of warning messages
-        
+
     Returns:
         True if there are warnings
     """
@@ -191,10 +192,10 @@ def has_warnings(warnings: list) -> bool:
 @app.template_filter('has_errors')
 def has_errors(errors: list) -> bool:
     """Check if there are any errors.
-    
+
     Args:
         errors: List of error messages
-        
+
     Returns:
         True if there are errors
     """
@@ -302,9 +303,9 @@ def internal_error(error: Exception) -> tuple[str, int]:
         return 'Internal server error', 500
 
 
-# Background worker for MTTR cache refresh
-def start_mttr_refresh_worker() -> None:
-    """Start background thread to periodically refresh MTTR cache.
+# Background worker for cache refresh
+def start_cache_refresh_worker() -> None:
+    """Start background thread to periodically refresh MTTR and health score caches.
 
     Refresh interval is controlled by MTTR_REFRESH_INTERVAL environment variable.
     Default: 300 seconds (5 minutes)
@@ -313,25 +314,28 @@ def start_mttr_refresh_worker() -> None:
     def worker() -> None:
         # Get refresh interval from environment variable
         interval = Config.MTTR_REFRESH_INTERVAL
-        logger.info(f'MTTR cache refresh worker starting (interval: {interval}s)')
+        logger.info(f'Cache refresh worker starting (interval: {interval}s)')
 
         # Initial delay to let Flask app fully start
         time.sleep(Config.MTTR_WORKER_INITIAL_DELAY)
 
         while True:
             try:
+                # Refresh MTTR cache first (health score depends on it)
                 refresh_mttr_cache()
+                # Then refresh health score cache
+                refresh_health_score_cache()
             except Exception as e:
-                logger.error(f'MTTR cache refresh failed: {e}', exc_info=True)
+                logger.error(f'Cache refresh failed: {e}', exc_info=True)
                 # Continue despite errors
 
             # Wait for next refresh
             time.sleep(interval)
 
     # Start daemon thread (terminates when main thread exits)
-    thread = threading.Thread(target=worker, daemon=True, name='MTTRRefreshWorker')
+    thread = threading.Thread(target=worker, daemon=True, name='CacheRefreshWorker')
     thread.start()
-    logger.info('MTTR cache refresh worker started')
+    logger.info('Cache refresh worker started')
 
 
 # Main entry point
@@ -345,8 +349,8 @@ def main() -> None:
     logger.info(f'Access dashboard at: http://{host}:{port}')
     logger.info(f'Debug mode: {debug}')
 
-    # Start background worker for MTTR cache refresh
-    start_mttr_refresh_worker()
+    # Start background worker for cache refresh
+    start_cache_refresh_worker()
 
     app.run(debug=debug, host=host, port=port)
 

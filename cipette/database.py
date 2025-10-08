@@ -257,10 +257,32 @@ def initialize_database() -> None:
         )
         """)
 
+        # Health score cache table for background job computation
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS health_score_cache (
+            workflow_id TEXT PRIMARY KEY,
+            overall_score REAL,
+            health_class TEXT,
+            data_quality TEXT,
+            success_rate_score REAL,
+            mttr_score REAL,
+            duration_score REAL,
+            throughput_score REAL,
+            sample_size INTEGER,
+            calculated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (workflow_id) REFERENCES workflows (id)
+        )
+        """)
+
         # Index for cache staleness checks
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_mttr_cache_calculated
             ON mttr_cache (calculated_at)
+        """)
+
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_health_score_cache_calculated
+            ON health_score_cache (calculated_at)
         """)
 
         conn.commit()
@@ -810,7 +832,7 @@ def _build_metrics_query(
 
     where_clause = ' AND '.join(where_conditions)
 
-    # Build JOIN clause (add mttr_cache for all-time queries)
+    # Build JOIN clause (add cache tables for all-time queries)
     if days:
         # Period-filtered: No cache join needed
         joins = """
@@ -818,11 +840,12 @@ def _build_metrics_query(
             LEFT JOIN runs r ON w.id = r.workflow_id
         """
     else:
-        # All-time: Join with cache table
+        # All-time: Join with cache tables
         joins = """
             JOIN repositories repo ON w.repository_id = repo.id
             LEFT JOIN runs r ON w.id = r.workflow_id
             LEFT JOIN mttr_cache c ON w.id = c.workflow_id
+            LEFT JOIN health_score_cache h ON w.id = h.workflow_id
         """
 
     # Unified query for all cases
@@ -870,31 +893,58 @@ def _get_metrics_cached(
         metrics = []
         for row in rows:
             try:
-                # Calculate health score with robust error handling
-                from cipette.health_calculator import calculate_health_score_safe
-                
-                health_result = calculate_health_score_safe(
-                    success_rate=row['success_rate'],
-                    mttr_seconds=row['mttr_seconds'],
-                    avg_duration_seconds=row['avg_duration_seconds'],
-                    total_runs=row['total_runs'],
-                    days=days or 30
-                )
-                
-                # Log warnings if any
-                if health_result['warnings']:
-                    logger.warning(
-                        f"Health score warnings for {row['repository']}/{row['workflow_name']}: "
-                        f"{', '.join(health_result['warnings'])}"
+                # Use cached health score for all-time queries, calculate for period-filtered
+                if days:
+                    # Period-filtered: Calculate health score on-the-fly
+                    from cipette.health_calculator import calculate_health_score_safe
+
+                    health_result = calculate_health_score_safe(
+                        success_rate=row['success_rate'],
+                        mttr_seconds=row['mttr_seconds'],
+                        avg_duration_seconds=row['avg_duration_seconds'],
+                        total_runs=row['total_runs'],
+                        days=days
                     )
-                
-                # Log errors if any
-                if health_result['errors']:
-                    logger.error(
-                        f"Health score errors for {row['repository']}/{row['workflow_name']}: "
-                        f"{', '.join(health_result['errors'])}"
-                    )
-                
+
+                    # Log warnings if any
+                    if health_result['warnings']:
+                        logger.warning(
+                            f"Health score warnings for {row['repository']}/{row['workflow_name']}: "
+                            f"{', '.join(health_result['warnings'])}"
+                        )
+
+                    # Log errors if any
+                    if health_result['errors']:
+                        logger.error(
+                            f"Health score errors for {row['repository']}/{row['workflow_name']}: "
+                            f"{', '.join(health_result['errors'])}"
+                        )
+
+                    health_score = health_result['overall_score']
+                    health_class = health_result['health_class']
+                    data_quality = health_result['data_quality']
+                    health_breakdown = {
+                        'success_rate_score': round(health_result['breakdown'].get('success_rate_score', 0.0), 1),
+                        'mttr_score': round(health_result['breakdown'].get('mttr_score', 0.0), 1),
+                        'duration_score': round(health_result['breakdown'].get('duration_score', 0.0), 1),
+                        'throughput_score': round(health_result['breakdown'].get('throughput_score', 0.0), 1),
+                    }
+                    health_warnings = health_result['warnings']
+                    health_errors = health_result['errors']
+                else:
+                    # All-time: Use cached health score
+                    health_score = row.get('overall_score', 0.0)
+                    health_class = row.get('health_class', 'unknown')
+                    data_quality = row.get('data_quality', 'insufficient')
+                    health_breakdown = {
+                        'success_rate_score': round(row.get('success_rate_score', 0.0), 1),
+                        'mttr_score': round(row.get('mttr_score', 0.0), 1),
+                        'duration_score': round(row.get('duration_score', 0.0), 1),
+                        'throughput_score': round(row.get('throughput_score', 0.0), 1),
+                    }
+                    health_warnings = []
+                    health_errors = []
+
                 metrics.append(
                     {
                         'repository': row['repository'],
@@ -908,26 +958,21 @@ def _get_metrics_cached(
                         'first_run': row['first_run'],
                         'last_run': row['last_run'],
                         'mttr_seconds': row['mttr_seconds'],
-                        'health_score': health_result['overall_score'],
-                        'health_class': health_result['health_class'],
-                        'data_quality': health_result['data_quality'],
-                        'health_breakdown': {
-                            'success_rate_score': round(health_result['breakdown'].get('success_rate_score', 0.0), 1),
-                            'mttr_score': round(health_result['breakdown'].get('mttr_score', 0.0), 1),
-                            'duration_score': round(health_result['breakdown'].get('duration_score', 0.0), 1),
-                            'throughput_score': round(health_result['breakdown'].get('throughput_score', 0.0), 1),
-                        },
-                        'health_warnings': health_result['warnings'],
-                        'health_errors': health_result['errors']
+                        'health_score': health_score,
+                        'health_class': health_class,
+                        'data_quality': data_quality,
+                        'health_breakdown': health_breakdown,
+                        'health_warnings': health_warnings,
+                        'health_errors': health_errors
                     }
                 )
-                
+
             except Exception as e:
                 logger.error(
-                    f"Failed to calculate health score for {row['repository']}/{row['workflow_name']}: {e}",
+                    f"Failed to process health score for {row['repository']}/{row['workflow_name']}: {e}",
                     exc_info=True
                 )
-                
+
                 # Fallback: create metric entry without health score
                 metrics.append(
                     {
@@ -951,8 +996,8 @@ def _get_metrics_cached(
                             'duration_score': 0.0,
                             'throughput_score': 0.0,
                         },
-                        'health_warnings': [f"Health score calculation failed: {str(e)}"],
-                        'health_errors': [f"Calculation error: {str(e)}"]
+                        'health_warnings': [f"Health score processing failed: {str(e)}"],
+                        'health_errors': [f"Processing error: {str(e)}"]
                     }
                 )
 
@@ -991,15 +1036,15 @@ def calculate_health_score(
     days: int = 30
 ) -> dict[str, float]:
     """Legacy health score calculation function.
-    
+
     DEPRECATED: Use HealthScoreCalculator from health_calculator module instead.
     """
     from cipette.health_calculator import calculate_health_score_safe
-    
+
     result = calculate_health_score_safe(
         success_rate, mttr_seconds, avg_duration_seconds, total_runs, days
     )
-    
+
     # Convert to legacy format
     return {
         'success_rate_score': result['breakdown'].get('success_rate_score', 0.0),
@@ -1012,15 +1057,15 @@ def calculate_health_score(
 
 def get_health_score_class(score: float) -> str:
     """Get health score classification.
-    
+
     Args:
         score: Health score (0-100)
-        
+
     Returns:
         Classification string: 'excellent', 'good', 'fair', 'poor'
     """
     from cipette.config import Config
-    
+
     if score >= Config.HEALTH_SCORE_EXCELLENT:
         return 'excellent'
     elif score >= Config.HEALTH_SCORE_GOOD:
@@ -1215,6 +1260,139 @@ def clear_mttr_cache() -> None:
         cursor.execute('DELETE FROM mttr_cache')
         deleted_count = cursor.rowcount
         logger.info(f'MTTR cache cleared: {deleted_count} entries removed')
+
+
+def refresh_health_score_cache() -> None:
+    """Refresh health score cache for all workflows.
+
+    This function:
+    1. Retrieves all workflows from the database
+    2. Calculates health score for each workflow
+    3. Stores/updates results in health_score_cache table
+
+    Designed to be called by background worker thread.
+    """
+    logger.info('Starting health score cache refresh...')
+    start_time = time.time()
+
+    try:
+        with get_connection() as conn:
+            cursor = conn.cursor()
+
+            # Get all workflows with their metrics
+            cursor.execute("""
+                SELECT
+                    w.id as workflow_id,
+                    repo.name as repository,
+                    w.name as workflow_name,
+                    COUNT(r.id) as total_runs,
+                    SUM(CASE WHEN r.conclusion = 'success' THEN 1 ELSE 0 END) as success_count,
+                    SUM(CASE WHEN r.conclusion = 'failure' THEN 1 ELSE 0 END) as failure_count,
+                    ROUND(AVG(r.duration_seconds), 2) as avg_duration_seconds,
+                    ROUND(
+                        CAST(SUM(CASE WHEN r.conclusion = 'success' THEN 1 ELSE 0 END) AS FLOAT) /
+                        NULLIF(SUM(CASE WHEN r.conclusion IN ('success', 'failure') THEN 1 ELSE 0 END), 0) * 100,
+                        2
+                    ) as success_rate
+                FROM workflows w
+                JOIN repositories repo ON w.repository_id = repo.id
+                LEFT JOIN runs r ON w.id = r.workflow_id
+                WHERE r.status = 'completed' OR r.status IS NULL
+                GROUP BY w.id, repo.name, w.name
+            """)
+            workflows = cursor.fetchall()
+
+            success_count = 0
+            error_count = 0
+
+            for workflow in workflows:
+                workflow_id = workflow['workflow_id']
+
+                try:
+                    # Get MTTR from cache
+                    cursor.execute(
+                        'SELECT mttr_seconds FROM mttr_cache WHERE workflow_id = ?',
+                        (workflow_id,)
+                    )
+                    mttr_row = cursor.fetchone()
+                    mttr_seconds = mttr_row['mttr_seconds'] if mttr_row else None
+
+                    # Calculate health score using the robust calculator
+                    from cipette.health_calculator import calculate_health_score_safe
+
+                    health_result = calculate_health_score_safe(
+                        success_rate=workflow['success_rate'],
+                        mttr_seconds=mttr_seconds,
+                        avg_duration_seconds=workflow['avg_duration_seconds'],
+                        total_runs=workflow['total_runs'],
+                        days=30  # Default to 30 days for cache
+                    )
+
+                    # Insert or update cache
+                    cursor.execute("""
+                        INSERT INTO health_score_cache (
+                            workflow_id, overall_score, health_class, data_quality,
+                            success_rate_score, mttr_score, duration_score, throughput_score,
+                            sample_size, calculated_at
+                        )
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                        ON CONFLICT(workflow_id) DO UPDATE SET
+                            overall_score = excluded.overall_score,
+                            health_class = excluded.health_class,
+                            data_quality = excluded.data_quality,
+                            success_rate_score = excluded.success_rate_score,
+                            mttr_score = excluded.mttr_score,
+                            duration_score = excluded.duration_score,
+                            throughput_score = excluded.throughput_score,
+                            sample_size = excluded.sample_size,
+                            calculated_at = excluded.calculated_at
+                    """, (
+                        workflow_id,
+                        health_result['overall_score'],
+                        health_result['health_class'],
+                        health_result['data_quality'],
+                        health_result['breakdown'].get('success_rate_score', 0.0),
+                        health_result['breakdown'].get('mttr_score', 0.0),
+                        health_result['breakdown'].get('duration_score', 0.0),
+                        health_result['breakdown'].get('throughput_score', 0.0),
+                        workflow['total_runs']
+                    ))
+
+                    success_count += 1
+
+                except Exception as e:
+                    logger.error(
+                        f'Error calculating health score for workflow {workflow_id}: {e}'
+                    )
+                    error_count += 1
+                    continue
+
+            elapsed = time.time() - start_time
+            logger.info(
+                f'Health score cache refresh completed: '
+                f'{success_count} workflows processed, {error_count} errors, '
+                f'{elapsed:.2f}s elapsed'
+            )
+
+    except Exception as e:
+        logger.error(f'Health score cache refresh failed: {e}', exc_info=True)
+        raise
+
+
+def clear_health_score_cache() -> None:
+    """Clear all health score cache entries.
+
+    Useful for:
+    - Manual cache invalidation
+    - Testing
+    - Forcing full recalculation
+    """
+    logger.info('Clearing health score cache...')
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute('DELETE FROM health_score_cache')
+        deleted_count = cursor.rowcount
+        logger.info(f'Health score cache cleared: {deleted_count} entries removed')
 
 
 if __name__ == '__main__':

@@ -170,7 +170,7 @@ class DataProcessor:
                 actor = 'unknown'
                 if hasattr(run, 'actor') and run.actor and hasattr(run.actor, 'login'):
                     actor = run.actor.login
-                
+
                 url = getattr(run, 'html_url', '')
 
                 runs_data.append(
