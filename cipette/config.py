@@ -131,7 +131,9 @@ class Config:
 
     @property
     def LOG_FORMAT(self) -> str:
-        return self._config_manager.get('logging.format', '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        return self._config_manager.get(
+            'logging.format', '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        )
 
     @property
     def LOG_DATE_FORMAT(self) -> str:
@@ -155,7 +157,9 @@ class Config:
 
     @property
     def TIME_UNITS(self) -> list[tuple]:
-        return self._config_manager.get('time_formatting.units', [["h", 3600], ["m", 60], ["s", 1]])
+        return self._config_manager.get(
+            'time_formatting.units', [['h', 3600], ['m', 60], ['s', 1]]
+        )
 
     @property
     def SUCCESS_RATE_HIGH_THRESHOLD(self) -> int:
@@ -167,7 +171,10 @@ class Config:
 
     @property
     def HEALTH_SCORE_WEIGHTS(self) -> dict[str, float]:
-        return self._config_manager.get('health_score.weights', {"success_rate": 0.35, "mttr": 0.25, "duration": 0.20, "throughput": 0.20})
+        return self._config_manager.get(
+            'health_score.weights',
+            {'success_rate': 0.35, 'mttr': 0.25, 'duration': 0.20, 'throughput': 0.20},
+        )
 
     @property
     def HEALTH_SCORE_EXCELLENT(self) -> int:

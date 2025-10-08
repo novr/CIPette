@@ -21,7 +21,7 @@ class ConfigManager:
         if config_file is None:
             # Default to config.toml in project root
             project_root = Path(__file__).parent.parent
-            config_file = project_root / "config.toml"
+            config_file = project_root / 'config.toml'
 
         self.config_file = Path(config_file)
         self._config: dict[str, Any] = {}
@@ -34,12 +34,12 @@ class ConfigManager:
                 self._config = tomllib.load(f)
         except FileNotFoundError:
             logger.warning(
-                f"Configuration file not found: {self.config_file}. "
-                "Please copy config.toml.example to config.toml and customize it."
+                f'Configuration file not found: {self.config_file}. '
+                'Please copy config.toml.example to config.toml and customize it.'
             )
             self._config = {}
         except tomllib.TOMLDecodeError as e:
-            raise ValueError(f"Invalid TOML configuration file: {e}") from e
+            raise ValueError(f'Invalid TOML configuration file: {e}') from e
 
     def get(self, key_path: str, default: Any = None) -> Any:
         """Get configuration value using dot notation.
@@ -66,7 +66,6 @@ class ConfigManager:
             return value
         except (KeyError, TypeError):
             return default
-
 
     def get_database_config(self) -> dict[str, Any]:
         """Get database configuration.
@@ -96,8 +95,12 @@ class ConfigManager:
             'timeout': self.get('github.timeout'),
             'rate_limit_warning': self.get('github.rate_limit_warning_threshold'),
             'rate_limit_stop': self.get('github.rate_limit_stop_threshold'),
-            'rate_limit_display_interval': self.get('github.rate_limit_display_interval'),
-            'rate_limit_display_threshold': self.get('github.rate_limit_display_threshold'),
+            'rate_limit_display_interval': self.get(
+                'github.rate_limit_display_interval'
+            ),
+            'rate_limit_display_threshold': self.get(
+                'github.rate_limit_display_threshold'
+            ),
         }
 
     def get_data_collection_config(self) -> dict[str, Any]:
@@ -108,7 +111,9 @@ class ConfigManager:
         """
         return {
             'max_workflow_runs': self.get('data_collection.max_workflow_runs'),
-            'max_workflows_per_repo': self.get('data_collection.max_workflows_per_repo'),
+            'max_workflows_per_repo': self.get(
+                'data_collection.max_workflows_per_repo'
+            ),
             'retry_max_attempts': self.get('data_collection.retry_max_attempts'),
             'retry_delay': self.get('data_collection.retry_delay'),
             'retry_backoff_factor': self.get('data_collection.retry_backoff_factor'),
@@ -202,11 +207,18 @@ class ConfigManager:
 
         github_token = self.get('github.token')
         if not github_token or github_token == 'ghp_your_token_here':
-            raise ValueError('GitHub token not configured. Please set github.token in config.toml')
+            raise ValueError(
+                'GitHub token not configured. Please set github.token in config.toml'
+            )
 
         target_repositories = self.get_repositories_config()
-        if not target_repositories or target_repositories == ['owner/repo1', 'owner/repo2']:
-            raise ValueError('Target repositories not configured. Please set repositories.targets in config.toml')
+        if not target_repositories or target_repositories == [
+            'owner/repo1',
+            'owner/repo2',
+        ]:
+            raise ValueError(
+                'Target repositories not configured. Please set repositories.targets in config.toml'
+            )
 
         max_workflow_runs = self.get('data_collection.max_workflow_runs', 10)
         if max_workflow_runs <= 0:
