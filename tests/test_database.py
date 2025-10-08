@@ -313,7 +313,7 @@ def test_calculate_health_score():
         mttr_seconds=300.0,  # 5 minutes
         avg_duration_seconds=600.0,  # 10 minutes
         total_runs=30,
-        days=30
+        days=30,
     )
 
     assert scores['overall_score'] > 80  # Should be excellent
@@ -328,7 +328,7 @@ def test_calculate_health_score():
         mttr_seconds=7200.0,  # 2 hours
         avg_duration_seconds=1800.0,  # 30 minutes
         total_runs=5,
-        days=30
+        days=30,
     )
 
     assert scores['overall_score'] < 50  # Should be poor
@@ -356,7 +356,7 @@ def test_health_calculator_robust():
         mttr_seconds=300.0,
         avg_duration_seconds=600.0,
         total_runs=30,
-        days=30
+        days=30,
     )
 
     assert result.overall_score > 80
@@ -371,7 +371,7 @@ def test_health_calculator_robust():
         mttr_seconds=None,
         avg_duration_seconds=600.0,
         total_runs=5,
-        days=30
+        days=30,
     )
 
     assert result.data_quality == DataQuality.FAIR  # 2 out of 4 metrics available
@@ -382,10 +382,10 @@ def test_health_calculator_robust():
     # Test with invalid data
     result = calculator.calculate_health_score(
         success_rate=-10.0,  # Invalid negative value
-        mttr_seconds="invalid",  # Invalid type
+        mttr_seconds='invalid',  # Invalid type
         avg_duration_seconds=600.0,
         total_runs=5,
-        days=30
+        days=30,
     )
 
     assert len(result.warnings) > 0
@@ -398,7 +398,7 @@ def test_health_calculator_robust():
         mttr_seconds=None,
         avg_duration_seconds=None,
         total_runs=0,
-        days=30
+        days=30,
     )
 
     assert result.data_quality == DataQuality.INSUFFICIENT
@@ -417,7 +417,7 @@ def test_health_calculator_edge_cases():
         mttr_seconds=0.0,
         avg_duration_seconds=0.0,
         total_runs=1,
-        days=1
+        days=1,
     )
 
     assert result.overall_score >= 0
@@ -431,7 +431,7 @@ def test_health_calculator_edge_cases():
         mttr_seconds=86400.0,  # 24 hours
         avg_duration_seconds=3600.0,  # 1 hour
         total_runs=1000,
-        days=1
+        days=1,
     )
 
     assert result.overall_score <= 100

@@ -20,7 +20,6 @@ class DataProcessor:
         """
         self.max_workflow_runs = max_workflow_runs
 
-
     def process_workflows_from_rest(
         self, workflows, repository: str
     ) -> tuple[int, int]:
@@ -193,7 +192,9 @@ class DataProcessor:
 
             except (AttributeError, TypeError, ValueError, IndexError) as e:
                 logger.warning(f'Error processing runs for workflow {workflow_id}: {e}')
-                logger.debug(f'Run object type: {type(run)}, attributes: {dir(run) if hasattr(run, "__dict__") else "No attributes"}')
+                logger.debug(
+                    f'Run object type: {type(run)}, attributes: {dir(run) if hasattr(run, "__dict__") else "No attributes"}'
+                )
                 continue
 
         return runs_data

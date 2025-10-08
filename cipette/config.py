@@ -66,7 +66,6 @@ class Config:
     # Cache configuration
     CACHE_FILE = 'data/last_run.json'
 
-
     # Time formatting constants
     TIME_UNITS = [
         ('h', 3600),  # hours
@@ -80,22 +79,22 @@ class Config:
 
     # Health score configuration
     HEALTH_SCORE_WEIGHTS = {
-        'success_rate': 0.35,    # 35% - 最も重要
-        'mttr': 0.25,           # 25% - 復旧時間
-        'duration': 0.20,       # 20% - 実行時間
-        'throughput': 0.20      # 20% - 実行頻度
+        'success_rate': 0.35,  # 35% - 最も重要
+        'mttr': 0.25,  # 25% - 復旧時間
+        'duration': 0.20,  # 20% - 実行時間
+        'throughput': 0.20,  # 20% - 実行頻度
     }
 
     # Health score thresholds
     HEALTH_SCORE_EXCELLENT = 85  # 85点以上: 優秀
-    HEALTH_SCORE_GOOD = 70       # 70-84点: 良好
-    HEALTH_SCORE_FAIR = 50       # 50-69点: 普通
-    HEALTH_SCORE_POOR = 0        # 50点未満: 要改善
+    HEALTH_SCORE_GOOD = 70  # 70-84点: 良好
+    HEALTH_SCORE_FAIR = 50  # 50-69点: 普通
+    HEALTH_SCORE_POOR = 0  # 50点未満: 要改善
 
     # Health score calculation parameters
     HEALTH_SCORE_DURATION_MAX_SECONDS = 1800  # 30分を最大値とする
-    HEALTH_SCORE_MTTR_MAX_SECONDS = 7200      # 2時間を最大値とする
-    HEALTH_SCORE_THROUGHPUT_MIN_DAYS = 1      # 最低1日1回実行
+    HEALTH_SCORE_MTTR_MAX_SECONDS = 7200  # 2時間を最大値とする
+    HEALTH_SCORE_THROUGHPUT_MIN_DAYS = 1  # 最低1日1回実行
 
     # SQLite PRAGMA settings
     SQLITE_JOURNAL_MODE = 'WAL'
@@ -111,6 +110,7 @@ class Config:
         """
         # Skip validation in test environment
         import sys
+
         if 'pytest' in sys.modules or 'test' in sys.argv:
             return
 

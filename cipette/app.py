@@ -139,7 +139,7 @@ def health_emoji(health_class: str) -> str:
         'good': '🟡',
         'fair': '🟠',
         'poor': '🔴',
-        'unknown': '⚪'
+        'unknown': '⚪',
     }
     return emoji_map.get(health_class, '⚪')
 
@@ -159,7 +159,7 @@ def data_quality_emoji(data_quality: str) -> str:
         'good': '👍',
         'fair': '⚠️',
         'poor': '❌',
-        'insufficient': '❓'
+        'insufficient': '❓',
     }
     return emoji_map.get(data_quality, '❓')
 

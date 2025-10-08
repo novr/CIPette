@@ -86,7 +86,6 @@ class GitHubClient:
 
         logger.info('Rate limit reset! Continuing data collection...')
 
-
     def get_repository(self, repo_name: str) -> object:
         """Get repository object.
 
@@ -97,4 +96,3 @@ class GitHubClient:
             Repository object
         """
         return self.github.get_repo(repo_name)
-

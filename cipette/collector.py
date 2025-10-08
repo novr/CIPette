@@ -62,8 +62,6 @@ class GitHubDataCollector:
             return None
         return dt.strftime('%Y-%m-%d %H:%M:%S')
 
-
-
     def save_last_run_info(self, repo_data: dict[str, object]) -> None:
         """Save last run information to file.
 

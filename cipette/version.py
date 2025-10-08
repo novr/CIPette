@@ -17,7 +17,7 @@ def _get_pyproject_data() -> dict[str, Any]:
     """
     # Get project root (go up from cipette/ to project root)
     project_root = Path(__file__).parent.parent
-    pyproject_file = project_root / "pyproject.toml"
+    pyproject_file = project_root / 'pyproject.toml'
 
     with open(pyproject_file, 'rb') as f:
         return tomllib.load(f)
@@ -33,7 +33,7 @@ def _get_version_from_pyproject() -> str:
         data = _get_pyproject_data()
         return data['project']['version']
     except (KeyError, FileNotFoundError) as e:
-        raise ValueError(f"Version not found in pyproject.toml: {e}") from e
+        raise ValueError(f'Version not found in pyproject.toml: {e}') from e
 
 
 # Get version from pyproject.toml (managed by python-semantic-release)
@@ -45,6 +45,6 @@ def get_version() -> str:
     return __version__
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     # Print version information when run directly
-    print(f"CIPette version: {get_version()}")
+    print(f'CIPette version: {get_version()}')

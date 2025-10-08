@@ -490,7 +490,6 @@ def insert_runs_batch(
     if not runs_data:
         return
 
-
     if conn is not None:
         # Use provided connection (for batch operations)
         try:
@@ -903,31 +902,39 @@ def _get_metrics_cached(
                         mttr_seconds=row['mttr_seconds'],
                         avg_duration_seconds=row['avg_duration_seconds'],
                         total_runs=row['total_runs'],
-                        days=days
+                        days=days,
                     )
 
                     # Log warnings if any
                     if health_result['warnings']:
                         logger.warning(
-                            f"Health score warnings for {row['repository']}/{row['workflow_name']}: "
-                            f"{', '.join(health_result['warnings'])}"
+                            f'Health score warnings for {row["repository"]}/{row["workflow_name"]}: '
+                            f'{", ".join(health_result["warnings"])}'
                         )
 
                     # Log errors if any
                     if health_result['errors']:
                         logger.error(
-                            f"Health score errors for {row['repository']}/{row['workflow_name']}: "
-                            f"{', '.join(health_result['errors'])}"
+                            f'Health score errors for {row["repository"]}/{row["workflow_name"]}: '
+                            f'{", ".join(health_result["errors"])}'
                         )
 
                     health_score = health_result['overall_score']
                     health_class = health_result['health_class']
                     data_quality = health_result['data_quality']
                     health_breakdown = {
-                        'success_rate_score': round(health_result['breakdown'].get('success_rate_score', 0.0), 1),
-                        'mttr_score': round(health_result['breakdown'].get('mttr_score', 0.0), 1),
-                        'duration_score': round(health_result['breakdown'].get('duration_score', 0.0), 1),
-                        'throughput_score': round(health_result['breakdown'].get('throughput_score', 0.0), 1),
+                        'success_rate_score': round(
+                            health_result['breakdown'].get('success_rate_score', 0.0), 1
+                        ),
+                        'mttr_score': round(
+                            health_result['breakdown'].get('mttr_score', 0.0), 1
+                        ),
+                        'duration_score': round(
+                            health_result['breakdown'].get('duration_score', 0.0), 1
+                        ),
+                        'throughput_score': round(
+                            health_result['breakdown'].get('throughput_score', 0.0), 1
+                        ),
                     }
                     health_warnings = health_result['warnings']
                     health_errors = health_result['errors']
@@ -937,7 +944,9 @@ def _get_metrics_cached(
                     health_class = row.get('health_class', 'unknown')
                     data_quality = row.get('data_quality', 'insufficient')
                     health_breakdown = {
-                        'success_rate_score': round(row.get('success_rate_score', 0.0), 1),
+                        'success_rate_score': round(
+                            row.get('success_rate_score', 0.0), 1
+                        ),
                         'mttr_score': round(row.get('mttr_score', 0.0), 1),
                         'duration_score': round(row.get('duration_score', 0.0), 1),
                         'throughput_score': round(row.get('throughput_score', 0.0), 1),
@@ -963,14 +972,14 @@ def _get_metrics_cached(
                         'data_quality': data_quality,
                         'health_breakdown': health_breakdown,
                         'health_warnings': health_warnings,
-                        'health_errors': health_errors
+                        'health_errors': health_errors,
                     }
                 )
 
             except Exception as e:
                 logger.error(
-                    f"Failed to process health score for {row['repository']}/{row['workflow_name']}: {e}",
-                    exc_info=True
+                    f'Failed to process health score for {row["repository"]}/{row["workflow_name"]}: {e}',
+                    exc_info=True,
                 )
 
                 # Fallback: create metric entry without health score
@@ -996,8 +1005,10 @@ def _get_metrics_cached(
                             'duration_score': 0.0,
                             'throughput_score': 0.0,
                         },
-                        'health_warnings': [f"Health score processing failed: {str(e)}"],
-                        'health_errors': [f"Processing error: {str(e)}"]
+                        'health_warnings': [
+                            f'Health score processing failed: {str(e)}'
+                        ],
+                        'health_errors': [f'Processing error: {str(e)}'],
                     }
                 )
 
@@ -1033,7 +1044,7 @@ def calculate_health_score(
     mttr_seconds: float | None,
     avg_duration_seconds: float | None,
     total_runs: int,
-    days: int = 30
+    days: int = 30,
 ) -> dict[str, float]:
     """Legacy health score calculation function.
 
@@ -1051,7 +1062,7 @@ def calculate_health_score(
         'mttr_score': result['breakdown'].get('mttr_score', 0.0),
         'duration_score': result['breakdown'].get('duration_score', 0.0),
         'throughput_score': result['breakdown'].get('throughput_score', 0.0),
-        'overall_score': result['overall_score']
+        'overall_score': result['overall_score'],
     }
 
 
@@ -1152,8 +1163,12 @@ def calculate_mttr(
         for row in rows:
             try:
                 # Handle ISO 8601 format with timezone info
-                failure_time = datetime.fromisoformat(row['failure_time'].replace('Z', '+00:00'))
-                recovery_time = datetime.fromisoformat(row['recovery_time'].replace('Z', '+00:00'))
+                failure_time = datetime.fromisoformat(
+                    row['failure_time'].replace('Z', '+00:00')
+                )
+                recovery_time = datetime.fromisoformat(
+                    row['recovery_time'].replace('Z', '+00:00')
+                )
                 delta = (recovery_time - failure_time).total_seconds()
                 total_seconds += delta
                 count += 1
@@ -1312,7 +1327,7 @@ def refresh_health_score_cache() -> None:
                     # Get MTTR from cache
                     cursor.execute(
                         'SELECT mttr_seconds FROM mttr_cache WHERE workflow_id = ?',
-                        (workflow_id,)
+                        (workflow_id,),
                     )
                     mttr_row = cursor.fetchone()
                     mttr_seconds = mttr_row['mttr_seconds'] if mttr_row else None
@@ -1325,11 +1340,12 @@ def refresh_health_score_cache() -> None:
                         mttr_seconds=mttr_seconds,
                         avg_duration_seconds=workflow['avg_duration_seconds'],
                         total_runs=workflow['total_runs'],
-                        days=30  # Default to 30 days for cache
+                        days=30,  # Default to 30 days for cache
                     )
 
                     # Insert or update cache
-                    cursor.execute("""
+                    cursor.execute(
+                        """
                         INSERT INTO health_score_cache (
                             workflow_id, overall_score, health_class, data_quality,
                             success_rate_score, mttr_score, duration_score, throughput_score,
@@ -1346,17 +1362,19 @@ def refresh_health_score_cache() -> None:
                             throughput_score = excluded.throughput_score,
                             sample_size = excluded.sample_size,
                             calculated_at = excluded.calculated_at
-                    """, (
-                        workflow_id,
-                        health_result['overall_score'],
-                        health_result['health_class'],
-                        health_result['data_quality'],
-                        health_result['breakdown'].get('success_rate_score', 0.0),
-                        health_result['breakdown'].get('mttr_score', 0.0),
-                        health_result['breakdown'].get('duration_score', 0.0),
-                        health_result['breakdown'].get('throughput_score', 0.0),
-                        workflow['total_runs']
-                    ))
+                    """,
+                        (
+                            workflow_id,
+                            health_result['overall_score'],
+                            health_result['health_class'],
+                            health_result['data_quality'],
+                            health_result['breakdown'].get('success_rate_score', 0.0),
+                            health_result['breakdown'].get('mttr_score', 0.0),
+                            health_result['breakdown'].get('duration_score', 0.0),
+                            health_result['breakdown'].get('throughput_score', 0.0),
+                            workflow['total_runs'],
+                        ),
+                    )
 
                     success_count += 1
 

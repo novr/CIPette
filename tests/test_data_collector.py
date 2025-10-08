@@ -13,7 +13,7 @@ def collector():
     """Create a GitHubDataCollector instance with mocked GitHubClient."""
     with (
         patch('cipette.github_client.GitHubClient'),
-        patch('cipette.config.Config.GITHUB_TOKEN', 'fake_token_for_testing')
+        patch('cipette.config.Config.GITHUB_TOKEN', 'fake_token_for_testing'),
     ):
         collector = GitHubDataCollector()
         return collector

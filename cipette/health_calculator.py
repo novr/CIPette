@@ -12,16 +12,18 @@ logger = logging.getLogger(__name__)
 
 class DataQuality(Enum):
     """Data quality levels for health score calculation."""
-    EXCELLENT = "excellent"  # All data available and reliable
-    GOOD = "good"           # Most data available, minor gaps
-    FAIR = "fair"           # Some data missing, calculations limited
-    POOR = "poor"           # Significant data gaps, unreliable results
-    INSUFFICIENT = "insufficient"  # Not enough data for meaningful calculation
+
+    EXCELLENT = 'excellent'  # All data available and reliable
+    GOOD = 'good'  # Most data available, minor gaps
+    FAIR = 'fair'  # Some data missing, calculations limited
+    POOR = 'poor'  # Significant data gaps, unreliable results
+    INSUFFICIENT = 'insufficient'  # Not enough data for meaningful calculation
 
 
 @dataclass
 class HealthScoreResult:
     """Result of health score calculation with metadata."""
+
     overall_score: float
     health_class: str
     data_quality: DataQuality
@@ -40,7 +42,7 @@ class HealthScoreCalculator:
             'excellent': Config.HEALTH_SCORE_EXCELLENT,
             'good': Config.HEALTH_SCORE_GOOD,
             'fair': Config.HEALTH_SCORE_FAIR,
-            'poor': Config.HEALTH_SCORE_POOR
+            'poor': Config.HEALTH_SCORE_POOR,
         }
 
     def calculate_health_score(
@@ -49,7 +51,7 @@ class HealthScoreCalculator:
         mttr_seconds: float | None,
         avg_duration_seconds: float | None,
         total_runs: int,
-        days: int = 30
+        days: int = 30,
     ) -> HealthScoreResult:
         """Calculate health score with comprehensive error handling and data quality assessment.
 
@@ -74,10 +76,16 @@ class HealthScoreCalculator:
             )
 
             # Calculate individual scores with error handling
-            success_rate_score = self._calculate_success_rate_score(success_rate, warnings)
+            success_rate_score = self._calculate_success_rate_score(
+                success_rate, warnings
+            )
             mttr_score = self._calculate_mttr_score(mttr_seconds, warnings)
-            duration_score = self._calculate_duration_score(avg_duration_seconds, warnings)
-            throughput_score = self._calculate_throughput_score(total_runs, days, warnings)
+            duration_score = self._calculate_duration_score(
+                avg_duration_seconds, warnings
+            )
+            throughput_score = self._calculate_throughput_score(
+                total_runs, days, warnings
+            )
 
             breakdown = {
                 'success_rate_score': success_rate_score,
@@ -99,10 +107,10 @@ class HealthScoreCalculator:
                     'mttr_seconds': mttr_seconds,
                     'avg_duration_seconds': avg_duration_seconds,
                     'total_runs': total_runs,
-                    'days': days
+                    'days': days,
                 },
                 'weights_used': self.weights,
-                'thresholds_used': self.thresholds
+                'thresholds_used': self.thresholds,
             }
 
             return HealthScoreResult(
@@ -112,12 +120,12 @@ class HealthScoreCalculator:
                 breakdown=breakdown,
                 warnings=warnings,
                 errors=errors,
-                calculation_metadata=calculation_metadata
+                calculation_metadata=calculation_metadata,
             )
 
         except Exception as e:
-            logger.error(f"Health score calculation failed: {e}", exc_info=True)
-            errors.append(f"Calculation error: {str(e)}")
+            logger.error(f'Health score calculation failed: {e}', exc_info=True)
+            errors.append(f'Calculation error: {str(e)}')
 
             return HealthScoreResult(
                 overall_score=0.0,
@@ -126,7 +134,7 @@ class HealthScoreCalculator:
                 breakdown={},
                 warnings=warnings,
                 errors=errors,
-                calculation_metadata={'error': str(e)}
+                calculation_metadata={'error': str(e)},
             )
 
     def _assess_data_quality(
@@ -135,7 +143,7 @@ class HealthScoreCalculator:
         mttr_seconds: float | None,
         avg_duration_seconds: float | None,
         total_runs: int,
-        days: int
+        days: int,
     ) -> DataQuality:
         """Assess the quality of input data for health score calculation."""
         available_metrics = 0
@@ -163,126 +171,144 @@ class HealthScoreCalculator:
         else:
             return DataQuality.INSUFFICIENT
 
-    def _calculate_success_rate_score(self, success_rate: float | None, warnings: list) -> float:
+    def _calculate_success_rate_score(
+        self, success_rate: float | None, warnings: list
+    ) -> float:
         """Calculate success rate score with validation."""
         if success_rate is None:
-            warnings.append("Success rate data not available")
+            warnings.append('Success rate data not available')
             return 0.0
 
         if not isinstance(success_rate, (int, float)):
-            warnings.append(f"Invalid success rate type: {type(success_rate)}")
+            warnings.append(f'Invalid success rate type: {type(success_rate)}')
             return 0.0
 
         if success_rate < 0 or success_rate > 100:
-            warnings.append(f"Success rate out of valid range (0-100): {success_rate}")
+            warnings.append(f'Success rate out of valid range (0-100): {success_rate}')
             return max(0.0, min(100.0, success_rate))
 
         return float(success_rate)
 
-    def _calculate_mttr_score(self, mttr_seconds: float | None, warnings: list) -> float:
+    def _calculate_mttr_score(
+        self, mttr_seconds: float | None, warnings: list
+    ) -> float:
         """Calculate MTTR score with validation."""
         if mttr_seconds is None:
-            warnings.append("MTTR data not available - assuming no failures")
+            warnings.append('MTTR data not available - assuming no failures')
             return 100.0  # No failures is good
 
         if not isinstance(mttr_seconds, (int, float)):
-            warnings.append(f"Invalid MTTR type: {type(mttr_seconds)}")
+            warnings.append(f'Invalid MTTR type: {type(mttr_seconds)}')
             return 0.0
 
         if mttr_seconds < 0:
-            warnings.append(f"Negative MTTR value: {mttr_seconds}")
+            warnings.append(f'Negative MTTR value: {mttr_seconds}')
             return 0.0
 
         if mttr_seconds == 0:
-            warnings.append("MTTR is zero - this may indicate data quality issues")
+            warnings.append('MTTR is zero - this may indicate data quality issues')
             return 100.0
 
         # Calculate score (shorter is better)
         max_mttr = Config.HEALTH_SCORE_MTTR_MAX_SECONDS
         if mttr_seconds > max_mttr:
-            warnings.append(f"MTTR exceeds maximum threshold ({max_mttr}s): {mttr_seconds}s")
+            warnings.append(
+                f'MTTR exceeds maximum threshold ({max_mttr}s): {mttr_seconds}s'
+            )
 
         score = max(0.0, 100.0 - (mttr_seconds / max_mttr) * 100.0)
         return min(100.0, score)
 
-    def _calculate_duration_score(self, avg_duration_seconds: float | None, warnings: list) -> float:
+    def _calculate_duration_score(
+        self, avg_duration_seconds: float | None, warnings: list
+    ) -> float:
         """Calculate duration score with validation."""
         if avg_duration_seconds is None:
-            warnings.append("Duration data not available")
+            warnings.append('Duration data not available')
             return 0.0
 
         if not isinstance(avg_duration_seconds, (int, float)):
-            warnings.append(f"Invalid duration type: {type(avg_duration_seconds)}")
+            warnings.append(f'Invalid duration type: {type(avg_duration_seconds)}')
             return 0.0
 
         if avg_duration_seconds < 0:
-            warnings.append(f"Negative duration value: {avg_duration_seconds}")
+            warnings.append(f'Negative duration value: {avg_duration_seconds}')
             return 0.0
 
         if avg_duration_seconds == 0:
-            warnings.append("Duration is zero - this may indicate data quality issues")
+            warnings.append('Duration is zero - this may indicate data quality issues')
             return 0.0
 
         # Calculate score (shorter is better)
         max_duration = Config.HEALTH_SCORE_DURATION_MAX_SECONDS
         if avg_duration_seconds > max_duration:
-            warnings.append(f"Duration exceeds maximum threshold ({max_duration}s): {avg_duration_seconds}s")
+            warnings.append(
+                f'Duration exceeds maximum threshold ({max_duration}s): {avg_duration_seconds}s'
+            )
 
         score = max(0.0, 100.0 - (avg_duration_seconds / max_duration) * 100.0)
         return min(100.0, score)
 
-    def _calculate_throughput_score(self, total_runs: int, days: int, warnings: list) -> float:
+    def _calculate_throughput_score(
+        self, total_runs: int, days: int, warnings: list
+    ) -> float:
         """Calculate throughput score with validation."""
         if not isinstance(total_runs, int) or total_runs < 0:
-            warnings.append(f"Invalid total_runs value: {total_runs}")
+            warnings.append(f'Invalid total_runs value: {total_runs}')
             return 0.0
 
         if not isinstance(days, int) or days <= 0:
-            warnings.append(f"Invalid days value: {days}")
+            warnings.append(f'Invalid days value: {days}')
             return 0.0
 
         if total_runs == 0:
-            warnings.append("No runs found in the specified period")
+            warnings.append('No runs found in the specified period')
             return 0.0
 
         runs_per_day = total_runs / days
         min_runs_per_day = Config.HEALTH_SCORE_THROUGHPUT_MIN_DAYS
 
         if runs_per_day < min_runs_per_day:
-            warnings.append(f"Low throughput: {runs_per_day:.2f} runs/day (minimum: {min_runs_per_day})")
+            warnings.append(
+                f'Low throughput: {runs_per_day:.2f} runs/day (minimum: {min_runs_per_day})'
+            )
 
         score = min(100.0, (runs_per_day / min_runs_per_day) * 100.0)
         return max(0.0, score)
 
-    def _calculate_overall_score(self, breakdown: dict[str, float], warnings: list) -> float:
+    def _calculate_overall_score(
+        self, breakdown: dict[str, float], warnings: list
+    ) -> float:
         """Calculate overall weighted score with validation."""
         try:
             # Validate weights sum to 1.0
             weight_sum = sum(self.weights.values())
             if abs(weight_sum - 1.0) > 0.001:
-                warnings.append(f"Weights do not sum to 1.0: {weight_sum}")
+                warnings.append(f'Weights do not sum to 1.0: {weight_sum}')
 
             # Calculate weighted average
             overall_score = (
-                breakdown['success_rate_score'] * self.weights['success_rate'] +
-                breakdown['mttr_score'] * self.weights['mttr'] +
-                breakdown['duration_score'] * self.weights['duration'] +
-                breakdown['throughput_score'] * self.weights['throughput']
+                breakdown['success_rate_score'] * self.weights['success_rate']
+                + breakdown['mttr_score'] * self.weights['mttr']
+                + breakdown['duration_score'] * self.weights['duration']
+                + breakdown['throughput_score'] * self.weights['throughput']
             )
 
             # Validate result
             if not isinstance(overall_score, (int, float)):
-                warnings.append(f"Invalid overall score type: {type(overall_score)}")
+                warnings.append(f'Invalid overall score type: {type(overall_score)}')
                 return 0.0
 
             if overall_score < 0 or overall_score > 100:
-                warnings.append(f"Overall score out of valid range (0-100): {overall_score}")
+                warnings.append(
+                    f'Overall score out of valid range (0-100): {overall_score}'
+                )
                 return max(0.0, min(100.0, overall_score))
 
             return round(overall_score, 1)
 
         except Exception as e:
-            warnings.append(f"Error calculating overall score: {str(e)}")
+            warnings.append(f'Error calculating overall score: {str(e)}')
             return 0.0
 
     def _determine_health_class(self, overall_score: float) -> str:
@@ -303,7 +329,7 @@ def calculate_health_score_safe(
     mttr_seconds: float | None,
     avg_duration_seconds: float | None,
     total_runs: int,
-    days: int = 30
+    days: int = 30,
 ) -> dict[str, Any]:
     """Safe wrapper for health score calculation with backward compatibility.
 
@@ -322,5 +348,5 @@ def calculate_health_score_safe(
         'breakdown': result.breakdown,
         'warnings': result.warnings,
         'errors': result.errors,
-        'calculation_metadata': result.calculation_metadata
+        'calculation_metadata': result.calculation_metadata,
     }
