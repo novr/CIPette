@@ -109,23 +109,28 @@ CACHE_TTL_SECONDS=60       # メトリクスキャッシュTTL（秒）
 
 ## 実装アプローチ
 
-### 段階的開発
-1. **GitHub API接続**: 基本データ取得
-2. **SQLite保存**: ローカルデータ蓄積
-3. **HTML表示**: 基本メトリクス可視化
-4. **フィルタリング**: 期間・ブランチ絞込み
+### 段階的開発（完了済み）
+1. **GitHub API接続**: 基本データ取得 ✅
+2. **SQLite保存**: ローカルデータ蓄積 ✅
+3. **HTML表示**: 基本メトリクス可視化 ✅
+4. **フィルタリング**: 期間・リポジトリ絞込み ✅
+5. **ヘルススコア計算**: 総合評価システム ✅
+6. **データ品質評価**: 5段階品質判定 ✅
+7. **エラーハンドリング**: 堅牢な例外処理 ✅
 
 ### ファイル構成
 ```
-cicd_dashboard/
-├── app.py              # Flask アプリケーション
-├── data_collector.py   # GitHub API データ取得
-├── database.py         # SQLite 操作
-├── config.py          # 設定（API token等）
+cipette/
+├── app.py                  # Flask アプリケーション
+├── collector.py            # GitHub API データ取得
+├── database.py             # SQLite 操作
+├── health_calculator.py    # ヘルススコア計算
+├── config.py               # 設定（API token等）
+├── error_handling.py       # エラーハンドリング
 ├── templates/
-│   └── dashboard.html  # メインダッシュボード
+│   └── dashboard.html      # メインダッシュボード
 └── static/
-    └── style.css       # 最小限CSS（50行程度）
+    └── style.css           # 最小限CSS
 ```
 
 ---
@@ -158,6 +163,23 @@ cicd_dashboard/
 - **シンプル配色**: 白背景・黒文字・アクセント1色
 
 **方針**: 1週間で動作するプロトタイプを目標
+
+---
+
+## 重要な実装ポイント
+
+### ヘルススコア計算
+- `HealthScoreCalculator`クラスを使用
+- データ品質評価を自動判定
+- エラーハンドリングと警告システム
+
+### データベース操作
+- `DatabaseConnection`コンテキストマネージャーを使用
+- ヘルススコア計算時の例外処理強化
+
+### パフォーマンス
+- MTTR計算はキャッシュ済み
+- メトリクスはメモリキャッシュ（TTL付き）
 
 ---
 

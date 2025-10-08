@@ -22,10 +22,17 @@
 - **Throughput**: 期間あたりの実行回数
 - **MTTR**: 失敗から回復までの平均時間
 
+### ヘルススコアシステム
+- **総合評価**: 0-100点のヘルススコア
+- **データ品質評価**: 5段階の品質レベル（Excellent, Good, Fair, Poor, Insufficient）
+- **エラーハンドリング**: 堅牢な例外処理と警告システム
+
 ### 表示機能
 - リポジトリ別メトリクス一覧
-- 期間フィルタリング（7日・30日）
-- 基本的なトレンド表示
+- 期間フィルタリング（7日・30日・90日）
+- ヘルススコアの視覚的表示
+- データ品質インジケーター
+- 警告・エラー表示
 
 ---
 
@@ -37,6 +44,8 @@ GitHub Actions API → Python (Flask) → SQLite → HTML ダッシュボード
                     Background Worker (MTTR Cache)
                            ↓
                     In-Memory Cache (Metrics)
+                           ↓
+                    Health Score Calculator
 ```
 
 **シンプルな構成**:
@@ -45,6 +54,7 @@ GitHub Actions API → Python (Flask) → SQLite → HTML ダッシュボード
 - Flaskでウェブ表示
 - **Background Worker**: MTTR値を定期的に事前計算
 - **In-Memory Cache**: メトリクスをキャッシュして高速化
+- **Health Score Calculator**: 堅牢なヘルススコア計算とエラーハンドリング
 
 ---
 

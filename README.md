@@ -6,10 +6,12 @@ Get insights from your CI/CD pipeline in 5 minutes, not 5 hours.
 
 ## What You Get
 
+- 🏥 **CI/CD Health Score**: Comprehensive 0-100 health assessment
 - 📊 **4 Key Metrics**: Duration, Success Rate, Throughput, MTTR
 - 🔍 **Filtering**: By time period and repository
 - ⚡ **Fast**: Cached data for quick loading
 - 🎯 **Simple**: No complex setup required
+- 🛡️ **Robust**: Error handling and data quality assessment
 
 ## Quick Start
 
@@ -59,8 +61,9 @@ uv run cipette-web
 
 1. **Collect**: Fetches workflow data from GitHub API
 2. **Store**: Saves to local SQLite database
-3. **Calculate**: Computes metrics with caching
-4. **Display**: Shows results in simple web table
+3. **Calculate**: Computes metrics with robust error handling
+4. **Assess**: Evaluates data quality and health scores
+5. **Display**: Shows results with quality indicators
 
 ## Development
 
@@ -82,21 +85,38 @@ uv run ruff format cipette/ tests/
 
 ```
 CIPette/
-├── cipette/           # Main package
-│   ├── app.py         # Web dashboard
-│   ├── collector.py   # Data collection
-│   ├── database.py    # SQLite operations
-│   └── config.py      # Configuration
-├── templates/         # HTML templates
-├── static/           # CSS styles
-└── tests/            # Test suite
+├── cipette/                    # Main package
+│   ├── app.py                  # Web dashboard
+│   ├── collector.py            # Data collection
+│   ├── database.py             # SQLite operations
+│   ├── health_calculator.py    # Health score calculation
+│   ├── config.py               # Configuration
+│   ├── error_handling.py       # Error handling utilities
+│   └── retry.py                # Retry logic
+├── templates/                  # HTML templates
+├── static/                     # CSS styles
+└── tests/                      # Test suite
 ```
 
-## Performance
+## Features
 
+### Health Score System
+- **Comprehensive Assessment**: 0-100 health score based on 4 key metrics
+- **Data Quality Indicators**: Visual indicators for data reliability
+- **Error Handling**: Robust error handling with detailed logging
+- **Warning System**: Alerts for data quality issues
+
+### Performance
 - **MTTR Cache**: Pre-computed for 10-10,000x speedup
 - **Metrics Cache**: 1-minute TTL for fast loading
 - **Incremental Updates**: Only fetch new data
+- **Error Recovery**: Graceful handling of calculation failures
+
+## Documentation
+
+- **[User Guide](docs/USER_GUIDE.md)**: Complete user guide with best practices
+- **[API Documentation](docs/API.md)**: Technical API reference
+- **[Configuration](env.example)**: Configuration options
 
 ## License
 
