@@ -219,6 +219,70 @@ tbody tr:hover {
     color: var(--color-text-muted);
 }
 
+/* Health Score Styles */
+.health-score {
+    text-align: center;
+    min-width: 80px;
+}
+
+.health-indicator {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    margin-bottom: 0.25rem;
+}
+
+.health-emoji {
+    font-size: 1.2rem;
+}
+
+.health-value {
+    font-weight: 700;
+    font-size: 1.1rem;
+}
+
+.health-breakdown {
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+}
+
+.health-excellent {
+    background: rgba(34, 197, 94, 0.1);
+    border-radius: 4px;
+}
+
+.health-excellent .health-value {
+    color: var(--color-success);
+}
+
+.health-good {
+    background: rgba(245, 158, 11, 0.1);
+    border-radius: 4px;
+}
+
+.health-good .health-value {
+    color: var(--color-warning);
+}
+
+.health-fair {
+    background: rgba(251, 146, 60, 0.1);
+    border-radius: 4px;
+}
+
+.health-fair .health-value {
+    color: #f97316;
+}
+
+.health-poor {
+    background: rgba(239, 68, 68, 0.1);
+    border-radius: 4px;
+}
+
+.health-poor .health-value {
+    color: var(--color-error);
+}
+
 /* Success Rate Colors */
 .success-rate {
     font-weight: 600;

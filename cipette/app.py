@@ -109,6 +109,38 @@ def format_mttr(seconds: float | None) -> str:
     return _format_time(seconds, Config.TIME_UNITS[:2])  # hours and minutes
 
 
+@app.template_filter('health_class')
+def health_class(health_class: str) -> str:
+    """Get CSS class for health score classification.
+    
+    Args:
+        health_class: Health classification ('excellent', 'good', 'fair', 'poor')
+        
+    Returns:
+        CSS class name
+    """
+    return f'health-{health_class}'
+
+
+@app.template_filter('health_emoji')
+def health_emoji(health_class: str) -> str:
+    """Get emoji for health score classification.
+    
+    Args:
+        health_class: Health classification ('excellent', 'good', 'fair', 'poor')
+        
+    Returns:
+        Emoji string
+    """
+    emoji_map = {
+        'excellent': '🟢',
+        'good': '🟡', 
+        'fair': '🟠',
+        'poor': '🔴'
+    }
+    return emoji_map.get(health_class, '⚪')
+
+
 # Helper functions
 @lru_cache(maxsize=128)
 def get_available_repositories() -> list[str]:

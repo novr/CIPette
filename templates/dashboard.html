@@ -34,6 +34,7 @@
     <table>
         <thead>
             <tr>
+                <th>Health</th>
                 <th>Repository</th>
                 <th>Workflow</th>
                 <th>Total Runs</th>
@@ -48,6 +49,15 @@
         <tbody>
             {% for metric in metrics %}
             <tr>
+                <td class="health-score {{ metric.health_class|health_class }}">
+                    <div class="health-indicator">
+                        <span class="health-emoji">{{ metric.health_class|health_emoji }}</span>
+                        <span class="health-value">{{ metric.health_score }}</span>
+                    </div>
+                    <div class="health-breakdown" title="Success Rate: {{ metric.health_breakdown.success_rate_score }}%, MTTR: {{ metric.health_breakdown.mttr_score }}%, Duration: {{ metric.health_breakdown.duration_score }}%, Throughput: {{ metric.health_breakdown.throughput_score }}%">
+                        <small>{{ metric.health_class|title }}</small>
+                    </div>
+                </td>
                 <td class="repo-name">{{ metric.repository }}</td>
                 <td class="workflow-name">{{ metric.workflow_name }}</td>
                 <td class="text-center">{{ metric.total_runs }}</td>

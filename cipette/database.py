@@ -869,6 +869,15 @@ def _get_metrics_cached(
 
         metrics = []
         for row in rows:
+            # Calculate health score
+            health_scores = calculate_health_score(
+                success_rate=row['success_rate'],
+                mttr_seconds=row['mttr_seconds'],
+                avg_duration_seconds=row['avg_duration_seconds'],
+                total_runs=row['total_runs'],
+                days=days or 30
+            )
+            
             metrics.append(
                 {
                     'repository': row['repository'],
@@ -882,6 +891,14 @@ def _get_metrics_cached(
                     'first_run': row['first_run'],
                     'last_run': row['last_run'],
                     'mttr_seconds': row['mttr_seconds'],
+                    'health_score': round(health_scores['overall_score'], 1),
+                    'health_class': get_health_score_class(health_scores['overall_score']),
+                    'health_breakdown': {
+                        'success_rate_score': round(health_scores['success_rate_score'], 1),
+                        'mttr_score': round(health_scores['mttr_score'], 1),
+                        'duration_score': round(health_scores['duration_score'], 1),
+                        'throughput_score': round(health_scores['throughput_score'], 1),
+                    }
                 }
             )
 
@@ -909,6 +926,101 @@ def get_metrics_by_repository(
 
     # Convert back to list of dicts
     return [dict(items) for items in cached_tuples]
+
+
+def calculate_health_score(
+    success_rate: float | None,
+    mttr_seconds: float | None,
+    avg_duration_seconds: float | None,
+    total_runs: int,
+    days: int = 30
+) -> dict[str, float]:
+    """Calculate CI/CD health score based on multiple metrics.
+    
+    Args:
+        success_rate: Success rate percentage (0-100)
+        mttr_seconds: Mean Time To Recovery in seconds
+        avg_duration_seconds: Average duration in seconds
+        total_runs: Total number of runs
+        days: Time period for throughput calculation
+        
+    Returns:
+        Dictionary with health score breakdown
+    """
+    from cipette.config import Config
+    
+    # Initialize scores
+    scores = {
+        'success_rate_score': 0.0,
+        'mttr_score': 0.0,
+        'duration_score': 0.0,
+        'throughput_score': 0.0,
+        'overall_score': 0.0
+    }
+    
+    # 1. Success Rate Score (0-100)
+    if success_rate is not None:
+        scores['success_rate_score'] = min(100.0, max(0.0, success_rate))
+    else:
+        scores['success_rate_score'] = 0.0
+    
+    # 2. MTTR Score (0-100) - 短いほど良い
+    if mttr_seconds is not None and mttr_seconds > 0:
+        # 2時間以内なら100点、それ以上は線形減少
+        mttr_score = max(0.0, 100.0 - (mttr_seconds / Config.HEALTH_SCORE_MTTR_MAX_SECONDS) * 100.0)
+        scores['mttr_score'] = min(100.0, mttr_score)
+    else:
+        # MTTRが計算できない場合は、失敗がないと仮定して100点
+        scores['mttr_score'] = 100.0
+    
+    # 3. Duration Score (0-100) - 短いほど良い
+    if avg_duration_seconds is not None and avg_duration_seconds > 0:
+        # 30分以内なら100点、それ以上は線形減少
+        duration_score = max(0.0, 100.0 - (avg_duration_seconds / Config.HEALTH_SCORE_DURATION_MAX_SECONDS) * 100.0)
+        scores['duration_score'] = min(100.0, duration_score)
+    else:
+        scores['duration_score'] = 0.0
+    
+    # 4. Throughput Score (0-100) - 適度な頻度が良い
+    if total_runs > 0 and days > 0:
+        runs_per_day = total_runs / days
+        # 1日1回以上実行されていれば100点、それ以下は線形減少
+        throughput_score = min(100.0, (runs_per_day / Config.HEALTH_SCORE_THROUGHPUT_MIN_DAYS) * 100.0)
+        scores['throughput_score'] = max(0.0, throughput_score)
+    else:
+        scores['throughput_score'] = 0.0
+    
+    # 5. Overall Score (重み付き平均)
+    weights = Config.HEALTH_SCORE_WEIGHTS
+    scores['overall_score'] = (
+        scores['success_rate_score'] * weights['success_rate'] +
+        scores['mttr_score'] * weights['mttr'] +
+        scores['duration_score'] * weights['duration'] +
+        scores['throughput_score'] * weights['throughput']
+    )
+    
+    return scores
+
+
+def get_health_score_class(score: float) -> str:
+    """Get health score classification.
+    
+    Args:
+        score: Health score (0-100)
+        
+    Returns:
+        Classification string: 'excellent', 'good', 'fair', 'poor'
+    """
+    from cipette.config import Config
+    
+    if score >= Config.HEALTH_SCORE_EXCELLENT:
+        return 'excellent'
+    elif score >= Config.HEALTH_SCORE_GOOD:
+        return 'good'
+    elif score >= Config.HEALTH_SCORE_FAIR:
+        return 'fair'
+    else:
+        return 'poor'
 
 
 def calculate_mttr(

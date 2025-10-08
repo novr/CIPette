@@ -303,6 +303,47 @@ def test_get_metrics_by_repository(test_db):
     assert metrics[0]['avg_duration_seconds'] == 240.0  # (300 + 180 + 240) / 3
 
 
+def test_calculate_health_score():
+    """Test health score calculation."""
+    from cipette.database import calculate_health_score, get_health_score_class
+    
+    # Test excellent health score
+    scores = calculate_health_score(
+        success_rate=95.0,
+        mttr_seconds=300.0,  # 5 minutes
+        avg_duration_seconds=600.0,  # 10 minutes
+        total_runs=30,
+        days=30
+    )
+    
+    assert scores['overall_score'] > 80  # Should be excellent
+    assert scores['success_rate_score'] == 95.0
+    assert scores['mttr_score'] > 90  # 5 minutes is very good
+    assert scores['duration_score'] > 60  # 10 minutes is reasonable
+    assert scores['throughput_score'] == 100.0  # 1 run per day is perfect
+    
+    # Test poor health score
+    scores = calculate_health_score(
+        success_rate=50.0,
+        mttr_seconds=7200.0,  # 2 hours
+        avg_duration_seconds=1800.0,  # 30 minutes
+        total_runs=5,
+        days=30
+    )
+    
+    assert scores['overall_score'] < 50  # Should be poor
+    assert scores['success_rate_score'] == 50.0
+    assert scores['mttr_score'] == 0.0  # 2 hours is maximum (0 points)
+    assert scores['duration_score'] == 0.0  # 30 minutes is maximum (0 points)
+    assert scores['throughput_score'] < 20  # Less than 1 run per day
+    
+    # Test health score classification
+    assert get_health_score_class(90.0) == 'excellent'
+    assert get_health_score_class(75.0) == 'good'
+    assert get_health_score_class(60.0) == 'fair'
+    assert get_health_score_class(30.0) == 'poor'
+
+
 def test_calculate_mttr(test_db):
     """Test MTTR calculation."""
     from cipette import database
