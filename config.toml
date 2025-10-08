@@ -1,0 +1,98 @@
+# CIPette Configuration File
+# This file contains all non-sensitive configuration settings for the CIPette application
+# Sensitive information (tokens, passwords) should be set via environment variables
+
+[database]
+path = "data/cicd_metrics.db"
+timeout = 60.0
+busy_timeout = 10000  # 10 seconds
+cache_size = 1000
+default_timeout = 30.0
+success_rate_multiplier = 100
+cache_ttl_seconds = 60
+
+[github]
+# GitHub API configuration
+# token should be set via environment variable GITHUB_TOKEN (sensitive)
+base_url = "https://api.github.com"
+timeout = 30
+rate_limit_warning_threshold = 100
+rate_limit_stop_threshold = 10
+rate_limit_display_interval = 60
+rate_limit_display_threshold = 10
+
+[data_collection]
+max_workflow_runs = 10  # Can be overridden by MAX_WORKFLOW_RUNS env var
+max_workflows_per_repo = 50
+retry_max_attempts = 3
+retry_delay = 1.0
+retry_backoff_factor = 2.0
+
+[web]
+host = "127.0.0.1"
+port = 5001
+debug = true
+default_port = 5000
+mttr_refresh_interval = 300  # 5 minutes, can be overridden by MTTR_REFRESH_INTERVAL env var
+mttr_worker_initial_delay = 5
+
+[logging]
+level = "INFO"
+format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+date_format = "%Y-%m-%d %H:%M:%S"
+file = "data/cipette.log"
+separator_length = 60
+
+[repositories]
+# Target repositories for data collection
+# Can be overridden by TARGET_REPOSITORIES env var (comma-separated)
+targets = [
+    "yumemi/taka_app_v2_server",
+    "yumemi/kadokawa-cw-front",
+    "yumemi/kadokawa-cw-be",
+    "yumemi/kao-skin-measure-front",
+]
+
+[cache]
+file = "data/last_run.json"
+
+[time_formatting]
+units = [
+    ["h", 3600],  # hours
+    ["m", 60],    # minutes
+    ["s", 1],     # seconds
+]
+
+[success_rate]
+high_threshold = 90
+medium_threshold = 70
+
+[health_score]
+# Health score calculation weights
+weights = { success_rate = 0.35, mttr = 0.25, duration = 0.20, throughput = 0.20 }
+
+# Health score thresholds
+excellent = 85  # 85点以上: 優秀
+good = 70       # 70-84点: 良好
+fair = 50       # 50-69点: 普通
+poor = 0        # 50点未満: 要改善
+
+# Health score calculation parameters
+duration_max_seconds = 1800  # 30分を最大値とする
+mttr_max_seconds = 7200      # 2時間を最大値とする
+throughput_min_days = 1      # 最低1日1回実行
+
+[sqlite]
+journal_mode = "WAL"
+synchronous = "NORMAL"
+temp_store = "MEMORY"
+
+# Environment variable overrides
+# The following settings can be overridden by environment variables:
+# - GITHUB_TOKEN: GitHub Personal Access Token (sensitive)
+# - TARGET_REPOSITORIES: Comma-separated list of repositories
+# - MAX_WORKFLOW_RUNS: Maximum number of workflow runs to collect
+# - MTTR_REFRESH_INTERVAL: MTTR cache refresh interval in seconds
+# - FLASK_DEBUG: Flask debug mode (true/false)
+# - FLASK_HOST: Flask host address
+# - FLASK_PORT: Flask port number

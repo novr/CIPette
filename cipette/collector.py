@@ -2,6 +2,9 @@ import logging
 from datetime import UTC, datetime
 
 from cipette.config import Config
+
+# Create Config instance for property access
+config = Config()
 from cipette.data_processor import DataProcessor
 from cipette.database import initialize_database
 from cipette.error_handling import (
@@ -25,9 +28,9 @@ class GitHubDataCollector:
 
     def __init__(self):
         """Initialize the data collector."""
-        self.github_client = GitHubClient(Config.GITHUB_TOKEN)
-        self.data_processor = DataProcessor(Config.MAX_WORKFLOW_RUNS)
-        self.etag_manager = ETagManager(Config.CACHE_FILE)
+        self.github_client = GitHubClient(config.GITHUB_TOKEN)
+        self.data_processor = DataProcessor(config.MAX_WORKFLOW_RUNS)
+        self.etag_manager = ETagManager(config.CACHE_FILE)
 
     def check_rate_limit(self) -> dict[str, int]:
         """Check and display current GitHub API rate limit status."""
@@ -116,12 +119,12 @@ class GitHubDataCollector:
             ConfigurationError: If required configuration is missing
             GitHubAPIError: If GitHub API access fails
         """
-        if not Config.GITHUB_TOKEN:
+        if not config.GITHUB_TOKEN:
             error_msg = 'GITHUB_TOKEN not found in environment variables'
             logger.error(error_msg)
             raise ConfigurationError(error_msg)
 
-        if not Config.TARGET_REPOSITORIES:
+        if not config.TARGET_REPOSITORIES:
             error_msg = 'TARGET_REPOSITORIES not configured'
             logger.error(error_msg)
             logger.error('Please set TARGET_REPOSITORIES in .env file')
@@ -131,7 +134,7 @@ class GitHubDataCollector:
         # Show last run info
         last_run = self.get_last_run_info()
         if last_run:
-            logger.info('=' * Config.LOG_SEPARATOR_LENGTH)
+            logger.info('=' * config.LOG_SEPARATOR_LENGTH)
             logger.info('Last data collection:')
             repos_info = last_run.get('repositories', {})
             if isinstance(repos_info, dict):
@@ -141,7 +144,7 @@ class GitHubDataCollector:
             else:
                 # Old format compatibility
                 logger.info(f'  Repositories: {", ".join(repos_info)}')
-            logger.info('=' * Config.LOG_SEPARATOR_LENGTH)
+            logger.info('=' * config.LOG_SEPARATOR_LENGTH)
 
         try:
             # Initialize database
@@ -152,7 +155,7 @@ class GitHubDataCollector:
             raise ConfigurationError(error_msg) from e
 
         # Parse repository list
-        repos = [r.strip() for r in Config.TARGET_REPOSITORIES if r.strip()]
+        repos = [r.strip() for r in config.TARGET_REPOSITORIES if r.strip()]
 
         if not repos:
             error_msg = 'No repositories configured'

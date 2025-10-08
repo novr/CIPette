@@ -11,6 +11,9 @@ from cipette.retry import retry_database_operation
 
 logger = logging.getLogger(__name__)
 
+# Create Config instance for property access
+config = Config()
+
 
 class DatabaseConnection:
     """Database connection wrapper with proper context manager support."""
@@ -23,7 +26,7 @@ class DatabaseConnection:
             timeout: Connection timeout in seconds
         """
         self.path = path
-        self.timeout = timeout or Config.DATABASE_DEFAULT_TIMEOUT
+        self.timeout = timeout or config.DATABASE_DEFAULT_TIMEOUT
         self.conn = None
 
     def __enter__(self) -> sqlite3.Connection:
@@ -33,11 +36,11 @@ class DatabaseConnection:
 
         # Configure SQLite for better performance and concurrency
         cursor = self.conn.cursor()
-        cursor.execute(f'PRAGMA journal_mode = {Config.SQLITE_JOURNAL_MODE}')
-        cursor.execute(f'PRAGMA synchronous = {Config.SQLITE_SYNCHRONOUS}')
-        cursor.execute(f'PRAGMA busy_timeout = {Config.DATABASE_BUSY_TIMEOUT}')
-        cursor.execute(f'PRAGMA temp_store = {Config.SQLITE_TEMP_STORE}')
-        cursor.execute(f'PRAGMA cache_size = {Config.DATABASE_CACHE_SIZE}')
+        cursor.execute(f'PRAGMA journal_mode = {config.SQLITE_JOURNAL_MODE}')
+        cursor.execute(f'PRAGMA synchronous = {config.SQLITE_SYNCHRONOUS}')
+        cursor.execute(f'PRAGMA busy_timeout = {config.DATABASE_BUSY_TIMEOUT}')
+        cursor.execute(f'PRAGMA temp_store = {config.SQLITE_TEMP_STORE}')
+        cursor.execute(f'PRAGMA cache_size = {config.DATABASE_CACHE_SIZE}')
 
         return self.conn
 
@@ -75,7 +78,7 @@ def get_connection() -> Generator[sqlite3.Connection]:
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM workflows")
     """
-    with DatabaseConnection(Config.DATABASE_PATH, Config.DATABASE_TIMEOUT) as conn:
+    with DatabaseConnection(config.DATABASE_PATH, config.DATABASE_TIMEOUT) as conn:
         yield conn
 
 
@@ -83,7 +86,7 @@ def initialize_database() -> None:
     """Create database tables if they don't exist."""
     with get_connection() as conn:
         cursor = conn.cursor()
-        logger.info(f'Database connection established: {Config.DATABASE_PATH}')
+        logger.info(f'Database connection established: {config.DATABASE_PATH}')
 
         # Repositories table
         cursor.execute("""
@@ -786,7 +789,7 @@ def _build_metrics_query(
         ROUND(AVG(r.duration_seconds), 2) as avg_duration_seconds,
         ROUND(
             CAST(SUM(CASE WHEN r.conclusion = 'success' THEN 1 ELSE 0 END) AS FLOAT) /
-            NULLIF(SUM(CASE WHEN r.conclusion IN ('success', 'failure') THEN 1 ELSE 0 END), 0) * {Config.DATABASE_SUCCESS_RATE_MULTIPLIER},
+            NULLIF(SUM(CASE WHEN r.conclusion IN ('success', 'failure') THEN 1 ELSE 0 END), 0) * {config.DATABASE_SUCCESS_RATE_MULTIPLIER},
             2
         ) as success_rate,
         MIN(r.started_at) as first_run,
@@ -1029,7 +1032,7 @@ def get_metrics_by_repository(
         List of dicts with metrics for each repository/workflow combination
     """
     # Calculate cache key (invalidates every minute)
-    cache_key = int(time.time() / Config.DATABASE_CACHE_TTL_SECONDS)
+    cache_key = int(time.time() / config.DATABASE_CACHE_TTL_SECONDS)
 
     # Get cached results
     cached_tuples = _get_metrics_cached(repository, days, cache_key)
@@ -1075,13 +1078,11 @@ def get_health_score_class(score: float) -> str:
     Returns:
         Classification string: 'excellent', 'good', 'fair', 'poor'
     """
-    from cipette.config import Config
-
-    if score >= Config.HEALTH_SCORE_EXCELLENT:
+    if score >= config.HEALTH_SCORE_EXCELLENT:
         return 'excellent'
-    elif score >= Config.HEALTH_SCORE_GOOD:
+    elif score >= config.HEALTH_SCORE_GOOD:
         return 'good'
-    elif score >= Config.HEALTH_SCORE_FAIR:
+    elif score >= config.HEALTH_SCORE_FAIR:
         return 'fair'
     else:
         return 'poor'

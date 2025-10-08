@@ -7,6 +7,9 @@ from typing import Any
 
 from cipette.config import Config
 
+# Create Config instance for property access
+config = Config()
+
 logger = logging.getLogger(__name__)
 
 
@@ -37,12 +40,12 @@ class HealthScoreCalculator:
     """Robust health score calculator with error handling and data quality checks."""
 
     def __init__(self):
-        self.weights = Config.HEALTH_SCORE_WEIGHTS
+        self.weights = config.HEALTH_SCORE_WEIGHTS
         self.thresholds = {
-            'excellent': Config.HEALTH_SCORE_EXCELLENT,
-            'good': Config.HEALTH_SCORE_GOOD,
-            'fair': Config.HEALTH_SCORE_FAIR,
-            'poor': Config.HEALTH_SCORE_POOR,
+            'excellent': config.HEALTH_SCORE_EXCELLENT,
+            'good': config.HEALTH_SCORE_GOOD,
+            'fair': config.HEALTH_SCORE_FAIR,
+            'poor': config.HEALTH_SCORE_POOR,
         }
 
     def calculate_health_score(
@@ -210,7 +213,7 @@ class HealthScoreCalculator:
             return 100.0
 
         # Calculate score (shorter is better)
-        max_mttr = Config.HEALTH_SCORE_MTTR_MAX_SECONDS
+        max_mttr = config.HEALTH_SCORE_MTTR_MAX_SECONDS
         if mttr_seconds > max_mttr:
             warnings.append(
                 f'MTTR exceeds maximum threshold ({max_mttr}s): {mttr_seconds}s'
@@ -240,7 +243,7 @@ class HealthScoreCalculator:
             return 0.0
 
         # Calculate score (shorter is better)
-        max_duration = Config.HEALTH_SCORE_DURATION_MAX_SECONDS
+        max_duration = config.HEALTH_SCORE_DURATION_MAX_SECONDS
         if avg_duration_seconds > max_duration:
             warnings.append(
                 f'Duration exceeds maximum threshold ({max_duration}s): {avg_duration_seconds}s'
@@ -266,7 +269,7 @@ class HealthScoreCalculator:
             return 0.0
 
         runs_per_day = total_runs / days
-        min_runs_per_day = Config.HEALTH_SCORE_THROUGHPUT_MIN_DAYS
+        min_runs_per_day = config.HEALTH_SCORE_THROUGHPUT_MIN_DAYS
 
         if runs_per_day < min_runs_per_day:
             warnings.append(

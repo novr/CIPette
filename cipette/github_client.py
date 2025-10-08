@@ -12,6 +12,9 @@ from github import (
 
 from cipette.config import Config
 
+# Create Config instance for property access
+config = Config()
+
 logger = logging.getLogger(__name__)
 
 
@@ -47,7 +50,7 @@ class GitHubClient:
             f'API Rate Limit: {core.remaining}/{core.limit} (resets at {reset_time_str})'
         )
 
-        if core.remaining < Config.GITHUB_RATE_LIMIT_WARNING_THRESHOLD:
+        if core.remaining < config.GITHUB_RATE_LIMIT_WARNING_THRESHOLD:
             logger.warning(f'Only {core.remaining} API calls remaining!')
 
         return core.remaining
@@ -71,16 +74,16 @@ class GitHubClient:
         reset_time_str = reset_time_local.strftime('%Y-%m-%d %H:%M:%S %Z')
         logger.warning(f'Rate limit exceeded! Waiting until {reset_time_str}')
         logger.info(
-            f'Waiting {wait_seconds} seconds ({wait_seconds // Config.GITHUB_RATE_LIMIT_DISPLAY_INTERVAL} minutes {wait_seconds % Config.GITHUB_RATE_LIMIT_DISPLAY_INTERVAL} seconds)...'
+            f'Waiting {wait_seconds} seconds ({wait_seconds // config.GITHUB_RATE_LIMIT_DISPLAY_INTERVAL} minutes {wait_seconds % config.GITHUB_RATE_LIMIT_DISPLAY_INTERVAL} seconds)...'
         )
 
         for remaining in range(wait_seconds, 0, -1):
             if (
-                remaining % Config.GITHUB_RATE_LIMIT_DISPLAY_INTERVAL == 0
-                or remaining <= Config.GITHUB_RATE_LIMIT_DISPLAY_THRESHOLD
+                remaining % config.GITHUB_RATE_LIMIT_DISPLAY_INTERVAL == 0
+                or remaining <= config.GITHUB_RATE_LIMIT_DISPLAY_THRESHOLD
             ):
-                minutes = remaining // Config.GITHUB_RATE_LIMIT_DISPLAY_INTERVAL
-                seconds = remaining % Config.GITHUB_RATE_LIMIT_DISPLAY_INTERVAL
+                minutes = remaining // config.GITHUB_RATE_LIMIT_DISPLAY_INTERVAL
+                seconds = remaining % config.GITHUB_RATE_LIMIT_DISPLAY_INTERVAL
                 logger.info(f'Rate limit reset in {minutes}m {seconds}s...')
             time.sleep(1)
 
