@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2025-01-27
+
+### Fixed
+- Resolve CI test failures caused by code formatting issues
+- Fix semantic-release command in GitHub Actions workflow
+- Ensure proper artifact upload in release pipeline
+
+### Technical Improvements
+- Improved CI/CD pipeline reliability
+- Enhanced release automation workflow
+- Better error handling in release process
+
 ## [0.2.0] - 2025-01-27
 
 ### Added
