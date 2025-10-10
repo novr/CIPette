@@ -48,3 +48,7 @@ instance/
 build/
 dist/
 *.egg-info/
+
+# Security reports
+*_report.json
+security_summary.md
