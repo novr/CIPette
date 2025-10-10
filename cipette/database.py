@@ -5,6 +5,7 @@ from collections.abc import Generator
 from contextlib import contextmanager
 from datetime import datetime
 from functools import lru_cache
+from typing import Any
 
 from cipette.config import Config
 from cipette.retry import retry_database_operation
@@ -878,6 +879,182 @@ def _build_metrics_query(
     return query, params
 
 
+def _calculate_health_score_for_period(row: sqlite3.Row, days: int) -> dict[str, Any]:
+    """Calculate health score for period-filtered queries.
+
+    Args:
+        row: Database row with metrics
+        days: Number of days for calculation
+
+    Returns:
+        Dictionary with health score data
+    """
+    from cipette.health_calculator import calculate_health_score_safe
+
+    health_result = calculate_health_score_safe(
+        success_rate=row['success_rate'],
+        mttr_seconds=row['mttr_seconds'],
+        avg_duration_seconds=row['avg_duration_seconds'],
+        total_runs=row['total_runs'],
+        days=days,
+    )
+
+    # Log warnings if any
+    if health_result['warnings']:
+        logger.warning(
+            f'Health score warnings for {row["repository"]}/{row["workflow_name"]}: '
+            f'{", ".join(health_result["warnings"])}'
+        )
+
+    # Log errors if any
+    if health_result['errors']:
+        logger.error(
+            f'Health score errors for {row["repository"]}/{row["workflow_name"]}: '
+            f'{", ".join(health_result["errors"])}'
+        )
+
+    return {
+        'health_score': health_result['overall_score'],
+        'health_class': health_result['health_class'],
+        'data_quality': health_result['data_quality'],
+        'health_breakdown': {
+            'success_rate_score': round(
+                health_result['breakdown'].get('success_rate_score', 0.0), 1
+            ),
+            'mttr_score': round(health_result['breakdown'].get('mttr_score', 0.0), 1),
+            'duration_score': round(
+                health_result['breakdown'].get('duration_score', 0.0), 1
+            ),
+            'throughput_score': round(
+                health_result['breakdown'].get('throughput_score', 0.0), 1
+            ),
+        },
+        'health_warnings': health_result['warnings'],
+        'health_errors': health_result['errors'],
+    }
+
+
+def _get_cached_health_score(row: sqlite3.Row) -> dict[str, Any]:
+    """Get cached health score for all-time queries.
+
+    Args:
+        row: Database row with cached health score data
+
+    Returns:
+        Dictionary with health score data
+    """
+    return {
+        'health_score': (
+            row['overall_score'] if row['overall_score'] is not None else 0.0
+        ),
+        'health_class': (
+            row['health_class'] if row['health_class'] is not None else 'unknown'
+        ),
+        'data_quality': (
+            row['data_quality'] if row['data_quality'] is not None else 'insufficient'
+        ),
+        'health_breakdown': {
+            'success_rate_score': round(
+                row['success_rate_score']
+                if row['success_rate_score'] is not None
+                else 0.0,
+                1,
+            ),
+            'mttr_score': round(
+                row['mttr_score'] if row['mttr_score'] is not None else 0.0,
+                1,
+            ),
+            'duration_score': round(
+                row['duration_score'] if row['duration_score'] is not None else 0.0,
+                1,
+            ),
+            'throughput_score': round(
+                row['throughput_score'] if row['throughput_score'] is not None else 0.0,
+                1,
+            ),
+        },
+        'health_warnings': [],
+        'health_errors': [],
+    }
+
+
+def _create_fallback_metric(row: sqlite3.Row, error: Exception) -> dict[str, Any]:
+    """Create fallback metric entry when health score calculation fails.
+
+    Args:
+        row: Database row with basic metrics
+        error: Exception that occurred
+
+    Returns:
+        Dictionary with fallback metric data
+    """
+    return {
+        'repository': row['repository'],
+        'workflow_name': row['workflow_name'],
+        'workflow_id': row['workflow_id'],
+        'total_runs': row['total_runs'],
+        'success_count': row['success_count'],
+        'failure_count': row['failure_count'],
+        'avg_duration_seconds': row['avg_duration_seconds'],
+        'success_rate': row['success_rate'],
+        'first_run': row['first_run'],
+        'last_run': row['last_run'],
+        'mttr_seconds': row['mttr_seconds'],
+        'health_score': 0.0,
+        'health_class': 'unknown',
+        'data_quality': 'insufficient',
+        'health_breakdown': {
+            'success_rate_score': 0.0,
+            'mttr_score': 0.0,
+            'duration_score': 0.0,
+            'throughput_score': 0.0,
+        },
+        'health_warnings': [f'Health score processing failed: {str(error)}'],
+        'health_errors': [f'Processing error: {str(error)}'],
+    }
+
+
+def _process_metric_row(row: sqlite3.Row, days: int | None) -> dict[str, Any]:
+    """Process a single metric row and calculate health score.
+
+    Args:
+        row: Database row with metrics
+        days: Number of days for period filtering (None for all-time)
+
+    Returns:
+        Dictionary with complete metric data
+    """
+    try:
+        # Calculate or get health score based on query type
+        if days:
+            health_data = _calculate_health_score_for_period(row, days)
+        else:
+            health_data = _get_cached_health_score(row)
+
+        # Combine basic metrics with health score data
+        return {
+            'repository': row['repository'],
+            'workflow_name': row['workflow_name'],
+            'workflow_id': row['workflow_id'],
+            'total_runs': row['total_runs'],
+            'success_count': row['success_count'],
+            'failure_count': row['failure_count'],
+            'avg_duration_seconds': row['avg_duration_seconds'],
+            'success_rate': row['success_rate'],
+            'first_run': row['first_run'],
+            'last_run': row['last_run'],
+            'mttr_seconds': row['mttr_seconds'],
+            **health_data,
+        }
+
+    except Exception as e:
+        logger.error(
+            f'Failed to process health score for {row["repository"]}/{row["workflow_name"]}: {e}',
+            exc_info=True,
+        )
+        return _create_fallback_metric(row, e)
+
+
 # Internal function with TTL-based caching
 @lru_cache(maxsize=128)
 def _get_metrics_cached(
@@ -902,156 +1079,8 @@ def _get_metrics_cached(
         cursor.execute(query, params)
         rows = cursor.fetchall()
 
-        metrics = []
-        for row in rows:
-            try:
-                # Use cached health score for all-time queries, calculate for period-filtered
-                if days:
-                    # Period-filtered: Calculate health score on-the-fly
-                    from cipette.health_calculator import calculate_health_score_safe
-
-                    health_result = calculate_health_score_safe(
-                        success_rate=row['success_rate'],
-                        mttr_seconds=row['mttr_seconds'],
-                        avg_duration_seconds=row['avg_duration_seconds'],
-                        total_runs=row['total_runs'],
-                        days=days,
-                    )
-
-                    # Log warnings if any
-                    if health_result['warnings']:
-                        logger.warning(
-                            f'Health score warnings for {row["repository"]}/{row["workflow_name"]}: '
-                            f'{", ".join(health_result["warnings"])}'
-                        )
-
-                    # Log errors if any
-                    if health_result['errors']:
-                        logger.error(
-                            f'Health score errors for {row["repository"]}/{row["workflow_name"]}: '
-                            f'{", ".join(health_result["errors"])}'
-                        )
-
-                    health_score = health_result['overall_score']
-                    health_class = health_result['health_class']
-                    data_quality = health_result['data_quality']
-                    health_breakdown = {
-                        'success_rate_score': round(
-                            health_result['breakdown'].get('success_rate_score', 0.0), 1
-                        ),
-                        'mttr_score': round(
-                            health_result['breakdown'].get('mttr_score', 0.0), 1
-                        ),
-                        'duration_score': round(
-                            health_result['breakdown'].get('duration_score', 0.0), 1
-                        ),
-                        'throughput_score': round(
-                            health_result['breakdown'].get('throughput_score', 0.0), 1
-                        ),
-                    }
-                    health_warnings = health_result['warnings']
-                    health_errors = health_result['errors']
-                else:
-                    # All-time: Use cached health score
-                    health_score = (
-                        row['overall_score']
-                        if row['overall_score'] is not None
-                        else 0.0
-                    )
-                    health_class = (
-                        row['health_class']
-                        if row['health_class'] is not None
-                        else 'unknown'
-                    )
-                    data_quality = (
-                        row['data_quality']
-                        if row['data_quality'] is not None
-                        else 'insufficient'
-                    )
-                    health_breakdown = {
-                        'success_rate_score': round(
-                            row['success_rate_score']
-                            if row['success_rate_score'] is not None
-                            else 0.0,
-                            1,
-                        ),
-                        'mttr_score': round(
-                            row['mttr_score'] if row['mttr_score'] is not None else 0.0,
-                            1,
-                        ),
-                        'duration_score': round(
-                            row['duration_score']
-                            if row['duration_score'] is not None
-                            else 0.0,
-                            1,
-                        ),
-                        'throughput_score': round(
-                            row['throughput_score']
-                            if row['throughput_score'] is not None
-                            else 0.0,
-                            1,
-                        ),
-                    }
-                    health_warnings = []
-                    health_errors = []
-
-                metrics.append(
-                    {
-                        'repository': row['repository'],
-                        'workflow_name': row['workflow_name'],
-                        'workflow_id': row['workflow_id'],
-                        'total_runs': row['total_runs'],
-                        'success_count': row['success_count'],
-                        'failure_count': row['failure_count'],
-                        'avg_duration_seconds': row['avg_duration_seconds'],
-                        'success_rate': row['success_rate'],
-                        'first_run': row['first_run'],
-                        'last_run': row['last_run'],
-                        'mttr_seconds': row['mttr_seconds'],
-                        'health_score': health_score,
-                        'health_class': health_class,
-                        'data_quality': data_quality,
-                        'health_breakdown': health_breakdown,
-                        'health_warnings': health_warnings,
-                        'health_errors': health_errors,
-                    }
-                )
-
-            except Exception as e:
-                logger.error(
-                    f'Failed to process health score for {row["repository"]}/{row["workflow_name"]}: {e}',
-                    exc_info=True,
-                )
-
-                # Fallback: create metric entry without health score
-                metrics.append(
-                    {
-                        'repository': row['repository'],
-                        'workflow_name': row['workflow_name'],
-                        'workflow_id': row['workflow_id'],
-                        'total_runs': row['total_runs'],
-                        'success_count': row['success_count'],
-                        'failure_count': row['failure_count'],
-                        'avg_duration_seconds': row['avg_duration_seconds'],
-                        'success_rate': row['success_rate'],
-                        'first_run': row['first_run'],
-                        'last_run': row['last_run'],
-                        'mttr_seconds': row['mttr_seconds'],
-                        'health_score': 0.0,
-                        'health_class': 'unknown',
-                        'data_quality': 'insufficient',
-                        'health_breakdown': {
-                            'success_rate_score': 0.0,
-                            'mttr_score': 0.0,
-                            'duration_score': 0.0,
-                            'throughput_score': 0.0,
-                        },
-                        'health_warnings': [
-                            f'Health score processing failed: {str(e)}'
-                        ],
-                        'health_errors': [f'Processing error: {str(e)}'],
-                    }
-                )
+        # Process each row to calculate health scores
+        metrics = [_process_metric_row(row, days) for row in rows]
 
         # Return as tuple for lru_cache (lists are not hashable)
         return tuple(tuple(m.items()) for m in metrics)
