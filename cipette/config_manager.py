@@ -207,7 +207,12 @@ class ConfigManager:
 
         github_token = self.get('github.token')
         # Check for placeholder or empty token
-        placeholder_tokens = ['ghp_your_token_here', 'your_token_here', 'token_here', '']
+        placeholder_tokens = [
+            'ghp_your_token_here',
+            'your_token_here',
+            'token_here',
+            '',
+        ]
         if not github_token or github_token in placeholder_tokens:
             raise ValueError(
                 'GitHub token not configured. Please set github.token in config.toml'
