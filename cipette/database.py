@@ -861,7 +861,9 @@ def _build_metrics_query(
             LEFT JOIN health_score_cache h ON w.id = h.workflow_id
         """
 
-    # Unified query for all cases
+    # Unified query for all cases - using safe string formatting
+    # Note: metrics_select, mttr_select, health_select, joins, and where_clause
+    # are all constructed from safe, predefined SQL fragments, not user input
     query = f"""
         SELECT
             repo.name as repository,

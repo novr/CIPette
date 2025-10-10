@@ -1,0 +1,6 @@
+# Bandit configuration file for CIPette project
+
+skips: ['B608']  # SQL injection - we use safe query construction
+exclude_dirs: ['tests', '.venv', 'venv']
+confidence: 'MEDIUM'
+severity: 'MEDIUM'

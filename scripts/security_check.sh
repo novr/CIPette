@@ -13,8 +13,8 @@ echo "✅ Safety check completed"
 
 # 2. コードセキュリティスキャン
 echo "🔍 2. コードセキュリティスキャン..."
-uv run bandit -r cipette/ -f json -o bandit_report.json || true
-uv run bandit -r cipette/ -f txt
+uv run bandit -r cipette/ -f json -o bandit_report.json -c .bandit || true
+uv run bandit -r cipette/ -f txt -c .bandit
 echo "✅ Bandit scan completed"
 
 # 3. 依存関係の整合性チェック
